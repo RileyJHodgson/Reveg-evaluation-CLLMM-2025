@@ -5,6 +5,7 @@ Scripts for analysis of:
 - Vegetation communities (Veg-analysis-CLLMM.R),
 - Bird communities (Bird-analysis-CLLMM.R)
 - Soil physicochemical conditions (Soil-analysis-CLLMM.R)
+- Home made functions used in these scripts (Permute-LMEM-Toolkit.R)
 
 Scripts are a work in progress
 To be added:
