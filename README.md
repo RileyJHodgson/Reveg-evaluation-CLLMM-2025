@@ -9,5 +9,5 @@ Scripts for analysis of:
 
 Scripts are a work in progress
 To be added:
-metagenomic profiling scripts for SLURM
+metagenomic profiling scripts for SLURM, and 
 metagenomic analysis (tax and functions .R)
