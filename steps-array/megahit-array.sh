@@ -16,7 +16,6 @@ sample=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $SAMP_MAN)
 [[ -z "$sample" ]] && { echo "No sample for index $SLURM_ARRAY_TASK_ID"; exit 1; }
 
 # storage directories
-# storage directories
 submit_dir="${SLURM_SUBMIT_DIR:-$PWD}"
 
 out_root="${OUT_DIR:-$submit_dir/results}"
