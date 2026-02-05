@@ -239,26 +239,41 @@ jid_amr_map_comb=$(sbatch --export=ALL \
 
 # *** Phase 4 *** ------------------------------------------------------------------------
 # --- Finalise outputs/clean-up files ---
+
 # remove fastp outputs once completed jid_kraken, jid_kraken_oom, jid_superfocus and jid_bt2_map complete
-# jid_finish_qc=$(sbatch --export=ALL \
-#   --parsable \
-#   --array=1-"$NSAMPLES" \
-#   -dependency=afterok:$jid_kraken:$jid_kraken_oom:$jid_superfocus:$jid_bt2_map \
-#   steps-array/finish-QC-array.sh)
+jid_finish_qc=$(sbatch --export=ALL \
+  --parsable \
+  --array=1-"$NSAMPLES" \
+  --dependency=afterok:$jid_kraken:$jid_kraken_oom:$jid_superfocus:$jid_bt2_map:$jid_SPF \
+  steps-array/finish-QC-array.sh)
+
+# remove kraken-suite outputs once completed jid_kraken, jid_bracken, jid_ktools, jid_cpm, and jid_combine_pfp complete
+jid_finish_tax=$(sbatch --export=ALL \
+  --parsable \
+  --array=1-"$NSAMPLES" \
+  --dependency=afterok:$jid_kraken:$jid_bracken:$jid_ktools:$jid_cpm:$jid_combine_pfp \
+  steps-array/finish-tax-array.sh)
+
+# remove superfocus outputs once completed jid_superfocus, jid_CPM_sf, and jid_combine_sf complete
+jid_finish_func=$(sbatch --export=ALL \
+  --parsable \
+  --array=1-"$NSAMPLES" \
+  --dependency=afterok:$jid_superfocus:$jid_CPM_sf:$jid_combine_sf \
+  steps-array/finish-func-array.sh)
 
 # # remove the contigs files once jid_megahit, jid_bt2_index and jid_amr complete
-# jid_finish_contigs=$(sbatch --export=ALL \
-#   --parsable \
-#   --array=1-"$NSAMPLES" \
-#   -dependency=afterok:$jid_megahit:$jid_bt2_index:$jid_amr \
-#   steps-array/finish-contigs-array.sh)
+jid_finish_contigs=$(sbatch --export=ALL \
+  --parsable \
+  --array=1-"$NSAMPLES" \
+  --dependency=afterok:$jid_megahit:$jid_bt2_index:$jid_amr \
+  steps-array/finish-contigs-array.sh)
 
 # # remove the amr gene and large bt2 mapping files once jid_amr_map_comb complete
-# jid_finish_map_amr_waste=$(sbatch --export=ALL \
-#   --parsable \
-#   --array=1-"$NSAMPLES" \
-#   -dependency=afterok:$jid_amr_map_comb\
-#   steps-array/finish-amr-mapping-array.sh)
+jid_finish_map_amr_waste=$(sbatch --export=ALL \
+  --parsable \
+  --array=1-"$NSAMPLES" \
+  --dependency=afterok:$jid_amr_map_comb\
+  steps-array/finish-amr-mapping-array.sh)
 
 # Summary
 echo ""
@@ -266,6 +281,7 @@ echo "Summary:"
 echo "  - Taxonomy output files will be found in $OUT_DIR/combined_standard.mpa and/or combined_oom"
 echo "  - Functional output files will be found in $OUT_DIR/functions_counts.csv and functional_percentages.csv"
 echo "  - AMR gene count output will be found in $OUT_DIR/amr-reads-summary.csv"
+echo ""
 echo ""
 echo "NOTE:"
 echo "  Taxonomy, functional and AMR outputs have all been normalised for prokaryotic fraction using singlem, and sampling depth via total abundances"
@@ -275,6 +291,7 @@ echo "  This accounts for:..."
 echo "          1 *Sequencing depth* (library size) via the CPM-style scaling"
 echo "          2 *Between-sample variation in prokaryotic content* via the SingleM prokaryotic fraction in the denominator"
 echo "   I.E., Estimated prokaryote-normalised read abundance: 'reads assigned to a taxon per million estimated prokaryotic reads in that sample'."
+echo ""
 echo ""
 echo "All interim files will deleted upon conclusion of the pipeline"
 
