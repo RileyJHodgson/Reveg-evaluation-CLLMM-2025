@@ -1,5 +1,4 @@
 # Analysis of Goyder - CLLMM revegetation project (bird data)
-# RJH 2026
 
 # Set working directory --------------------------------------------------------
 setwd("/PATH/TO/DATA")
@@ -20,7 +19,6 @@ outdir <- file.path(outdir)
 # Read data
 all_bird_data <- read_excel("Joint_Bird_Data.xlsx")
 colnames(all_bird_data)
-#SITE SPECIFIC METADATA
 metadata_v <- read_excel("Goyder-soil_analysis-metadata.xlsx", sheet = "site-info")
 colnames(metadata_v)
 
@@ -212,7 +210,7 @@ all_bird_visit_beta <- all_bird_data %>%
 set.seed(123)
 adonis2(dist_mat_jaccard_bird ~ Survey_Year * Treat_type, data = all_bird_visit_beta,
         strata = all_bird_visit_beta$WptID
-        )
+)
 # Permutation test for adonis under reduced model
 # Terms added sequentially (first to last)
 # Blocks:  strata 
@@ -237,7 +235,7 @@ spxsp_df$Presence <- 1
 spxsp_df_spp <- all_bird_data %>% 
   select(tSpp, tName) %>%
   distinct()
-  
+
 metadata_v$Old_WptID <- as.numeric(metadata_v$Old_WptID)
 spxsp_df <- left_join(spxsp_df, metadata_v, by = c("WptID" = "iWptID", "Old_WptID"))
 colnames(spxsp_df)
@@ -269,415 +267,465 @@ spxsp_df_pa <- sampling_frame %>%
 
 colnames(spxsp_df_pa)
 
-# run functions on all species in loop.
+## Parametric bootstrap binomial glmem ------------------------------------------
 library(lme4)
+library(DHARMa)
+# library(pbkrtest)
 
-GLMEM_binomial_permute_anova <- function(data, response, fixed_effects, random_effects, nreps = 9999, seed = 123) {
-  
-  set.seed(seed)
-  
-  # Build fixed effects
-  fixed_formula <- if (length(fixed_effects) == 1) {
-    fixed_effects
-  } else {
-    paste(fixed_effects, collapse = " + ")
-  }
-  # Build random effects
-  # random_formula <- paste("(1 | ", random_effects, ")", collapse = " + ")
-  random_formula <- paste("(1 |", random_effects, ")", collapse = " + ")
-  
-  # Full model formula
-  full_formula <- as.formula(paste(response, "~", fixed_formula, "+", random_formula))
-  
-  # Fit observed model
-  withCallingHandlers(
-    model <- glmer(full_formula, family = binomial(), data = data),
-    warning = function(w) {
-      if (grepl("singular", conditionMessage(w))) {
-        invokeRestart("muffleWarning")
-      }
-    }
-  )
-  # model <- glmer(full_formula, family = binomial(), data = data)
-  anova_obs <- car::Anova(model)
-  model_summary <- summary(model)
-  fixed_names <- rownames(anova_obs)
-  observed_chi <- anova_obs$Chisq
-  
-  # Storage for permutation stats
-  permute_teststats <- matrix(
-    NA, nrow = nreps, ncol = length(fixed_names),
-    dimnames = list(NULL, fixed_names)
-  )
-  
-  N <- nrow(data)
-  
-  for (i in seq_len(nreps)) {
-    data_perm <- data
-    data_perm[[response]] <- sample(data[[response]], N, replace = FALSE)
-    
-    mod_perm <- tryCatch(
-      suppressWarnings(
-        glmer(full_formula, family = binomial(), data = data_perm)
-      ),
-      error = function(e) NULL
-    )
-    # mod_perm <- tryCatch(
-    #   glmer(full_formula, family = binomial(), data = data_perm),
-    #   error = function(e) {
-    #     message("Permutation ", i, " failed: ", e$message)
-    #     NULL
-    #   }
-    # )
-    
-    if (!is.null(mod_perm)) {
-      anova_perm <- tryCatch(
-        car::Anova(mod_perm),
-        error = function(e) {
-          message("Anova failed on permutation ", i, ": ", e$message)
-          NULL
-        }
-      )
-      
-      if (!is.null(anova_perm) && all(fixed_names %in% rownames(anova_perm))) {
-        permute_teststats[i, ] <- anova_perm[fixed_names, "Chisq"]
-      }
-    }
-  }
-  # Drop failed permutations, keeping matrix structure
-  permute_teststats <- permute_teststats[complete.cases(permute_teststats), , drop = FALSE]
-  
-  # Then calculate permutation p-values safely
-  p_values <- sapply(seq_along(fixed_names), function(j) {
-    nbout <- which(permute_teststats[, j] >= observed_chi[j])
-    p_perm <- length(nbout) / nrow(permute_teststats)
-    return(p_perm)
-  })
-  
-  names(p_values) <- fixed_names
-  
-  return(list(
-    formula = full_formula,
-    model = model,
-    Anova = anova_obs,
-    Summary = model_summary,
-    observed_chisq = observed_chi,
-    permuted_chisq = permute_teststats,
-    permutation_p_values = p_values
-  ))
-}
+# Remove water birds from spxsp_df_pa
+water_birds <- c(
+  "Threskiornis molucca", # Australian White Ibis
+  "Threskiornis spinicollis", # Straw-necked Ibis
+  "Pelecanus conspicillatus", # Australian Pelican
+  "Haematopus longirostris", # Australian Pied Oystercatcher
+  "Microcarbo melanoleucos", # Little Pied Cormorant
+  "Phalacrocorax varius", # Pied Cormorant
+  "Phalacrocorax carbo", # Great Cormorant
+  "Phalacrocorax sulcirostris", # Little Black Cormorant
+  "Microcarbo melanoleucos", # Little Pied Cormorant"
+  "Ardea alba", # Great Egret)
+  "Platalea regia", # Royal Spoonbill
+  "Cygnus atratus", # Black Swan
+  "Egretta novaehollandiae", # White-faced Heron
+  "Ardea pacifica", # White-necked Heron
+  "Anas superciliosa", # Pacific Black Duck
+  "Tadorna tadornoides", # Australian Shelduck
+  "Chroicocephalus novaehollandiae", # Silver Gull
+  "Hydroprogne caspia", # Caspian Tern
+  "Thalasseus bergii", # Crested Tern
+  # "Vanellus miles", # Masked Lapwing               # Advice required
+  # "Charadrius ruficapillus", # Red-capped Plover   # Advice required
+  "Chlidonias hybrida" # Whiskered Tern
+)
 
-# 2025 data
-spxsp_df_2025 <- subset(spxsp_df_pa, Survey_Year == "2025")
-
-spcmodel_list2025 <- list()
-
-for (species in unique(spxsp_df_2025$tSpp)) {
-  data <- spxsp_df_2025 %>%
-    filter(tSpp == species)
-  
-  # skip rare species
-  if (sum(data$Presence == 1, na.rm = TRUE) < 10) next
-  # skip if no variation in RemRev
-  if (length(unique(data$RemRev[data$Presence == 1])) < 2) next
-  
-  gmodel <- GLMEM_binomial_permute_anova(data = data, 
-                                response = "Presence", 
-                                fixed_effects = "RemRev", 
-                                random_effects = c("WptID"), 
-                                nreps = 999, seed = 123
-                                )
-
-  # if (inherits(gmodel, "try-error")) next
-  spcmodel_list2025[[species]] <- gmodel
-}
-
-# saveRDS(object = spcmodel_list2025, file = "spcmodel_list2025.RDS")
-# spcmodel_list2025 <- readRDS("spcmodel_list2025.RDS")
-
-df_tot_2025 <- data.frame()
-
-for (species in seq_along(names(spcmodel_list2025))) {
-  df <- as.data.frame(spcmodel_list2025[[species]]$Summary$coefficients)
-  p_val <- spcmodel_list2025[[species]]$permutation_p_values
-  
-  tmp <- data.frame(
-    Species = names(spcmodel_list2025)[[species]],
-    Estimate = df$Estimate[2],  # assuming the 2nd row is the coefficient of interest
-    P_value = p_val
-  )
-  df_tot_2025 <- rbind(df_tot_2025, tmp)
-}
-
-df_tot_2025 <- left_join(df_tot_2025, spxsp_df_spp, by = c("Species" = "tSpp"))
-df_tot_2025$Species <- factor(df_tot_2025$Species, levels = df_tot_2025$Species[order(df_tot_2025$Estimate, decreasing = FALSE)])
-df_tot_2025$tName <- factor(df_tot_2025$tName, levels = df_tot_2025$tName[order(df_tot_2025$Estimate, decreasing = FALSE)])
-df_tot_2025$P_adj <- p.adjust(df_tot_2025$P_value, method = "BH")
-df_tot_2025$Significance <- ifelse(df_tot_2025$P_value < 0.05, "P < 0.05", "NS")
-df_tot_2025$Significance <- ifelse(df_tot_2025$P_adj < 0.05, "Padj < 0.05", df_tot_2025$Significance)
-df_tot_2025$Significance <- factor(df_tot_2025$Significance, levels = c("Padj < 0.05", "P < 0.05", "NS"))
-
-colnames(df_tot_2025)
-
-# ggplot
-df_tot_2025$Common_species <- paste0(df_tot_2025$tName, " | ", df_tot_2025$Species)
-df_tot_2025$Common_species <- factor(df_tot_2025$Common_species, levels = df_tot_2025$Common_species[order(df_tot_2025$Estimate, decreasing = FALSE)])
-
-# ggplot
-birdchange_2025 <- ggplot(data = df_tot_2025, aes(x = tName, y = Estimate, fill = Significance))+
-  geom_col()+coord_flip()+ggtitle("2025 surveys only")+
-  scale_fill_manual(values = c("Padj < 0.05" = "darkblue", "P < 0.05" = "blue", "NS" = "lightgrey"))+
-  theme_test()+
-  labs(y = "Log odds ratio of species presence:\n Remnant (reference group) vs Revegetation", x = "Bird species")
-birdchange_2025
-birdchange_2025_sig <- ggplot(data = df_tot_2025[df_tot_2025$Significance == "P < 0.05" | df_tot_2025$Significance == "Padj < 0.05",], aes(x = tName, y = Estimate, fill = Significance))+
-  geom_col()+coord_flip()+ggtitle("2025 surveys only")+
-  scale_fill_manual(values = c("Padj < 0.05" = "darkblue", "P < 0.05" = "blue", "NS" = "lightgrey"))+
-  theme_test()+
-  labs(y = "Log odds ratio of species presence:\n Remnant (reference group) vs Revegetation", x = "Bird species")
-birdchange_2025_sig
-
-# 2015
-spxsp_df_2015 <- subset(spxsp_df_pa, Survey_Year == "2015")
-
-spcmodel_list2015 <- list()
-
-for (species in unique(spxsp_df_2015$tSpp)) {
-  data <- spxsp_df_2015 %>%
-    filter(tSpp == species)
-  
-  # skip rare species
-  if (sum(data$Presence == 1, na.rm = TRUE) < 10) next
-  # skip if no variation in RemRev
-  if (length(unique(data$RemRev[data$Presence == 1])) < 2) next
-  
-  gmodel <- GLMEM_binomial_permute_anova(data = data, 
-                                         response = "Presence", 
-                                         fixed_effects = "RemRev", 
-                                         random_effects = c("WptID"), 
-                                         nreps = 999, seed = 123
-  )
-  
-  # if (inherits(gmodel, "try-error")) next
-  spcmodel_list2015[[species]] <- gmodel
-}
-
-# saveRDS(object = spcmodel_list2015, file = "spcmodel_list2015.RDS")
-# spcmodel_list2015 <- readRDS("spcmodel_list2015.RDS")
-
-df_tot_2015 <- data.frame()
-
-for (species in seq_along(names(spcmodel_list2015))) {
-  df <- as.data.frame(spcmodel_list2015[[species]]$Summary$coefficients)
-  p_val <- spcmodel_list2015[[species]]$permutation_p_values
-  
-  tmp <- data.frame(
-    Species = names(spcmodel_list2015)[[species]],
-    Estimate = df$Estimate[2],  # assuming the 2nd row is the coefficient of interest
-    P_value = p_val
-  )
-  df_tot_2015 <- rbind(df_tot_2015, tmp)
-}
-
-df_tot_2015 <- left_join(df_tot_2015, spxsp_df_spp, by = c("Species" = "tSpp"))
-df_tot_2015$Species <- factor(df_tot_2015$Species, levels = df_tot_2015$Species[order(df_tot_2015$Estimate, decreasing = FALSE)])
-df_tot_2015$tName <- factor(df_tot_2015$tName, levels = df_tot_2015$tName[order(df_tot_2015$Estimate, decreasing = FALSE)])
-df_tot_2015$P_adj <- p.adjust(df_tot_2015$P_value, method = "BH")
-df_tot_2015$Significance <- ifelse(df_tot_2015$P_value < 0.05, "P < 0.05", "NS")
-df_tot_2015$Significance <- ifelse(df_tot_2015$P_adj < 0.05, "Padj < 0.05", df_tot_2015$Significance)
-df_tot_2015$Significance <- factor(df_tot_2015$Significance, levels = c("Padj < 0.05", "P < 0.05", "NS"))
+spxsp_df_pa <- subset(
+  spxsp_df_pa,
+  !tSpp %in% water_birds
+)
 
 
-# ggplot
-df_tot_2015$Common_species <- paste0(df_tot_2015$tName, " | ", df_tot_2015$Species)
-df_tot_2015$Common_species <- factor(df_tot_2015$Common_species, levels = df_tot_2015$Common_species[order(df_tot_2015$Estimate, decreasing = FALSE)])
-
-# ggplot
-birdchange_2015 <- ggplot(data = df_tot_2015, aes(x = tName, y = Estimate, fill = Significance))+
-  geom_col()+coord_flip()+ggtitle("2015 surveys only")+
-  scale_fill_manual(values = c("Padj < 0.05" = "darkblue", "P < 0.05" = "blue", "NS" = "lightgrey"))+
-  theme_test()+
-  labs(y = "Log odds ratio of species presence:\n Remnant (reference group) vs Revegetation", x = "Bird species")
-
-birdchange_2015_sig <- ggplot(data = df_tot_2015[df_tot_2015$Significance == "P < 0.05" | df_tot_2015$Significance == "Padj < 0.05",], aes(x = tName, y = Estimate, fill = Significance))+
-  geom_col()+coord_flip()+ggtitle("2015 surveys only")+
-  scale_fill_manual(values = c("Padj < 0.05" = "darkblue", "P < 0.05" = "blue", "NS" = "lightgrey"))+
-  theme_test()+
-  labs(y = "Log odds ratio of species presence:\n Remnant (reference group) vs Revegetation", x = "Bird species")
-
-
-# Reveg sites only
+# run functions on all species in loop.
 spxsp_df_Reveg <- subset(spxsp_df_pa, RemRev == "Revegetation")
 spxsp_df_Reveg$Survey_Year <- as.factor(spxsp_df_Reveg$Survey_Year)
-levels(spxsp_df_Reveg$Survey_Year)
-
-spcmodel_listReveg <- list()
-
-spxsp_split <- split(spxsp_df_Reveg, spxsp_df_Reveg$tSpp)
-spcmodel_listReveg <- lapply(spxsp_split, function(data) {
-  
-  if (sum(data$Presence == 1, na.rm = TRUE) < 10) return(NULL)
-  if (length(unique(data$Survey_Year[data$Presence == 1])) < 2) return(NULL)
-  
-  tryCatch(
-    suppressMessages(
-      GLMEM_binomial_permute_anova(
-        data = data,
-        response = "Presence",
-        fixed_effects = "Survey_Year",
-        random_effects = c("WptID"),
-        nreps = 99,
-        seed = 123
-      )
-    ),
-    error = function(e) NULL
-  )
-})
-
-# Drop NULLs
-spcmodel_listReveg <- Filter(Negate(is.null), spcmodel_listReveg)
-
-# saveRDS(object = spcmodel_listReveg, file = "spcmodel_listReveg.RDS")
-# spcmodel_listReveg <- readRDS("spcmodel_listReveg.RDS")
-
-df_tot_Reveg <- data.frame()
-
-for (species in seq_along(names(spcmodel_listReveg))) {
-  df <- as.data.frame(spcmodel_listReveg[[species]]$Summary$coefficients)
-  p_val <- spcmodel_listReveg[[species]]$permutation_p_values
-  
-  tmp <- data.frame(
-    Species = names(spcmodel_listReveg)[[species]],
-    Estimate = df$Estimate[2],  # assuming the 2nd row is the coefficient of interest
-    P_value = p_val,
-    Significance = ifelse(p_val < 0.05, "P < 0.05", "NS")
-  )
-  df_tot_Reveg <- rbind(df_tot_Reveg, tmp)
-}
-
-df_tot_Reveg <- left_join(df_tot_Reveg, spxsp_df_spp, by = c("Species" = "tSpp"))
-df_tot_Reveg$Species <- factor(df_tot_Reveg$Species, levels = df_tot_Reveg$Species[order(df_tot_Reveg$Estimate, decreasing = FALSE)])
-df_tot_Reveg$tName <- factor(df_tot_Reveg$tName, levels = df_tot_Reveg$tName[order(df_tot_Reveg$Estimate, decreasing = FALSE)])
-df_tot_Reveg$P_adj <- p.adjust(df_tot_Reveg$P_value, method = "BH")
-df_tot_Reveg$Significance <- ifelse(df_tot_Reveg$P_value < 0.05, "P < 0.05", "NS")
-df_tot_Reveg$Significance <- ifelse(df_tot_Reveg$P_adj < 0.05, "Padj < 0.05", df_tot_Reveg$Significance)
-df_tot_Reveg$Significance <- factor(df_tot_Reveg$Significance, levels = c("Padj < 0.05", "P < 0.05", "NS"))
-
-# ggplot
-df_tot_Reveg$Common_species <- paste0(df_tot_Reveg$tName, " | ", df_tot_Reveg$Species)
-df_tot_Reveg$Common_species <- factor(df_tot_Reveg$Common_species, levels = df_tot_Reveg$Common_species[order(df_tot_Reveg$Estimate, decreasing = FALSE)])
-
-birdchange_rev <- ggplot(data = df_tot_Reveg, aes(x = tName, y = Estimate, fill = Significance))+
-  geom_col()+coord_flip()+
-  ggtitle("Revegetation only")+
-  scale_fill_manual(values = c("Padj < 0.05" = "darkblue", "P < 0.05" = "blue", "NS" = "lightgrey"))+
-  theme_test()+
-  labs(y = "Log odds ratio of species presence:\n 2015 (reference group) vs 2025", x = "Bird species")
-
-birdchange_rev_sig <- ggplot(data = df_tot_Reveg[df_tot_Reveg$Significance == "P < 0.05" | df_tot_Reveg$Significance == "Padj < 0.05",], aes(x = tName, y = Estimate, fill = Significance))+
-  geom_col()+coord_flip()+
-  scale_fill_manual(values = c("Padj < 0.05" = "darkblue", "P < 0.05" = "blue", "NS" = "lightgrey"))+
-  ggtitle("Revegetation only")+
-  theme_test()+
-  labs(y = "Log odds ratio of species presence:\n 2015 (reference group) vs 2025", x = "Bird species")
-
-table(df_tot_Reveg$Significance)
-
-# Remnant sites only
 spxsp_df_Remnant <- subset(spxsp_df_pa, RemRev == "Remnant")
 spxsp_df_Remnant$Survey_Year <- as.factor(spxsp_df_Remnant$Survey_Year)
-levels(spxsp_df_Remnant$Survey_Year)
 
-spcmodel_listRemnant <- list()
+spxsp_df_2025 <- subset(spxsp_df_pa, Survey_Year == "2025")
+spxsp_df_2015 <- subset(spxsp_df_pa, Survey_Year == "2015")
 
-spxsp_split <- split(spxsp_df_Remnant, spxsp_df_Remnant$tSpp)
-spcmodel_listRemnant <- lapply(spxsp_split, function(data) {
+
+
+### Revegetation comparisons across years --------------------------------------
+spxsp_split_rev <- split(spxsp_df_Reveg, spxsp_df_Reveg$tSpp)
+
+# Analysis of species
+spcmodel_listRevegeta_simple <- lapply(spxsp_split_rev, function(data) {
   
-  if (sum(data$Presence == 1, na.rm = TRUE) < 10) return(NULL)
-  if (length(unique(data$Survey_Year[data$Presence == 1])) < 2) return(NULL)
+  # Skip rare species
+  if (sum(data$Presence == 1, na.rm = TRUE) < 6) return(NULL)
   
-  tryCatch(
-    suppressMessages(
-      GLMEM_binomial_permute_anova(
-        data = data,
-        response = "Presence",
-        fixed_effects = "Survey_Year",
-        random_effects = c("WptID"),
-        nreps = 99,
-        seed = 123
-      )
-    ),
-    error = function(e) NULL
-  )
+  tryCatch({
+    
+    full <- glmer(Presence ~ Survey_Year + (1 | WptID), family = binomial(), data = data,
+                  control = glmerControl(optimizer = "nloptwrap",  optCtrl = list(maxfun = 1e6)))
+    
+    null <- glmer(Presence ~ 1 + (1 | WptID), family = binomial(), data = data, 
+                  control = glmerControl(optimizer = "nloptwrap",  optCtrl = list(maxfun = 1e6)))
+    
+    # pb <- PBmodcomp(full, null, nsim = 999)
+    pb_anova <- anova(full, null)
+    p_val <- pb_anova$`Pr(>Chisq)`
+    # print(pb)
+    
+    # test for overdispersion
+    sim_res <- simulateResiduals(fittedModel = full)
+    plot(sim_res)
+    disp_test <- testDispersion(sim_res)
+    
+    return(list(
+      species = unique(data$tSpp),
+      pvalue = p_val,
+      full_anova = pb_anova,
+      full_model = full,
+      dispersion_test = disp_test)
+      
+    )
+    
+  }, error = function(e) {
+    message("Failed for species ", unique(data$tSpp), ": ", e$message)
+    return(NULL)
+  })
 })
 
-# Drop NULLs
-spcmodel_listRemnant <- Filter(Negate(is.null), spcmodel_listRemnant)
+# Drop NULLs (failed models (ie. rare species))
+spcmodel_listRevegeta_simpleb <- Filter(Negate(is.null), spcmodel_listRevegeta_simple)
+length(spcmodel_listRevegeta_simple)
+length(spcmodel_listRevegeta_simpleb)
 
-# saveRDS(object = spcmodel_listRemnant, file = "spcmodel_listRemnant.RDS")
-# spcmodel_listRemnant <- readRDS("spcmodel_listRemnant.RDS")
+# Turn list into a dataframe
+results_df <- data.frame()
 
-df_tot_Remnant <- data.frame()
-
-for (species in seq_along(names(spcmodel_listRemnant))) {
-  df <- as.data.frame(spcmodel_listRemnant[[species]]$Summary$coefficients)
-  p_val <- spcmodel_listRemnant[[species]]$permutation_p_values
+for (species in names(spcmodel_listRevegeta_simpleb)) {
+  
+  mod <- spcmodel_listRevegeta_simpleb[[species]]
+  
+  # print quick info
+  print(species)
+  print(fixef(mod$full_model))
+  
+  estimate <- fixef(mod$full_model)["Survey_Year2025"]
+  evidence_overdisp <- mod$dispersion_test$p.value
   
   tmp <- data.frame(
-    Species = names(spcmodel_listRemnant)[[species]],
-    Estimate = df$Estimate[2],  # assuming the 2nd row is the coefficient of interest
-    P_value = p_val,
-    Significance = ifelse(p_val < 0.05, "P < 0.05", "NS")
+    Species  = mod$species,
+    Estimate = estimate,
+    overdisp_pval = evidence_overdisp,
+    P_value  = mod$pvalue[2]
   )
-  df_tot_Remnant <- rbind(df_tot_Remnant, tmp)
+  
+  results_df <- rbind(results_df, tmp)
 }
 
-# formate df for plotting
-df_tot_Remnant <- left_join(df_tot_Remnant, spxsp_df_spp, by = c("Species" = "tSpp"))
-df_tot_Remnant$Species <- factor(df_tot_Remnant$Species, levels = df_tot_Remnant$Species[order(df_tot_Remnant$Estimate, decreasing = FALSE)])
-df_tot_Remnant$tName <- factor(df_tot_Remnant$tName, levels = df_tot_Remnant$tName[order(df_tot_Remnant$Estimate, decreasing = FALSE)])
-df_tot_Remnant$P_adj <- p.adjust(df_tot_Remnant$P_value, method = "BH")
-df_tot_Remnant$Significance <- ifelse(df_tot_Remnant$P_value < 0.05, "P < 0.05", "NS")
-df_tot_Remnant$Significance <- ifelse(df_tot_Remnant$P_adj < 0.05, "Padj < 0.05", df_tot_Remnant$Significance)
-df_tot_Remnant$Significance <- factor(df_tot_Remnant$Significance, levels = c("Padj < 0.05", "P < 0.05", "NS"))
+# Plotting and interpretation
+results_df$Significant <- ifelse(results_df$P_value < 0.05, "P <0.05", "NS")
+results_df <- left_join(results_df, spxsp_df_spp, by = c("Species" = "tSpp"))
+results_df$Species <- factor(results_df$Species, levels = results_df$Species[order(results_df$Estimate, decreasing = FALSE)])
+results_df$tName <- factor(results_df$tName, levels = results_df$tName[order(results_df$Estimate, decreasing = FALSE)])
 
-# ggplot
-df_tot_Remnant$Common_species <- paste0(df_tot_Remnant$tName, " | ", df_tot_Remnant$Species)
-df_tot_Remnant$Common_species <- factor(df_tot_Remnant$Common_species, levels = df_tot_Remnant$Common_species[order(df_tot_Remnant$Estimate, decreasing = FALSE)])
+results_df$P_adj <- p.adjust(results_df$P_value, method = "BH")
+results_df$Significance <- ifelse(results_df$P_value < 0.05, "P < 0.05", "NS")
+results_df$Significance <- ifelse(results_df$P_adj < 0.05, "Padj < 0.05", results_df$Significance)
+results_df$Significance <- factor(results_df$Significance, levels = c("Padj < 0.05", "P < 0.05", "NS"))
 
-birdchange_rem <- ggplot(data = df_tot_Remnant, aes(x = tName, y = Estimate, fill = Significance))+
-  geom_col()+coord_flip()+
-  ggtitle("Remnant only")+
-  scale_fill_manual(values = c("Padj < 0.05" = "darkblue", "P < 0.05" = "blue", "NS" = "lightgrey"))+
+# Plotting details
+results_df_revegetation <- results_df %>%
+  mutate(
+    Change = case_when(
+      Estimate < 0 & Significance == "Padj < 0.05" ~ "Significant decrease",
+      Estimate > 0 & Significance == "Padj < 0.05" ~ "Significant increase",
+      TRUE ~ "No significant change"
+    )
+  )
+
+plot_Reveg_s <- ggplot(results_df_revegetation, aes(x = tName, y = Estimate, fill = Change))+
+  geom_col(colour = "black")+coord_flip()+
+  # ylim(-30, 30)+ 
   theme_test()+
-  labs(y = "Log odds ratio of species presence:\n 2015 (reference group) vs 2025", x = "Bird species")
+  labs(y = "Effect size (log-odds) for species presence\nrelative to 2015 surveys", x = "Species", title="Revegetation sites only")+
+  scale_fill_manual(values = c("Significant decrease" = "darkred", "Significant increase" = "darkblue", "No significant change" = "grey"))
+plot_Reveg_s
 
-birdchange_rem_sig <- ggplot(data = df_tot_Remnant[df_tot_Remnant$Significance == "P < 0.05" | df_tot_Remnant$Significance == "Padj < 0.05",], aes(x = tName, y = Estimate, fill = Significance))+
-  geom_col()+coord_flip()+
-  scale_fill_manual(values = c("Padj < 0.05" = "darkblue", "P < 0.05" = "blue", "NS" = "lightgrey"))+
-  ggtitle("Remnant only")+
+
+### Remnant comparisons across years --------------------------------------
+spxsp_split_rem <- split(spxsp_df_Remnant, spxsp_df_Remnant$tSpp)
+
+# Analysis of species
+spcmodel_listRemneta_simple <- lapply(spxsp_split_rem, function(data) {
+  
+  # Skip rare species
+  if (sum(data$Presence == 1, na.rm = TRUE) < 6) return(NULL)
+  
+  tryCatch({
+    
+    full <- glmer(Presence ~ Survey_Year + (1 | WptID), family = binomial(), data = data,
+                  control = glmerControl(optimizer = "nloptwrap",  optCtrl = list(maxfun = 1e6)))
+    
+    null <- glmer(Presence ~ 1 + (1 | WptID), family = binomial(), data = data, 
+                  control = glmerControl(optimizer = "nloptwrap",  optCtrl = list(maxfun = 1e6)))
+    
+    # pb <- PBmodcomp(full, null, nsim = 999)
+    pb_anova <- anova(full, null)
+    p_val <- pb_anova$`Pr(>Chisq)`
+    # print(pb)
+    
+    # test for overdispersion
+    sim_res <- simulateResiduals(fittedModel = full)
+    plot(sim_res)
+    disp_test <- testDispersion(sim_res)
+    
+    return(list(
+      species = unique(data$tSpp),
+      pvalue = p_val,
+      full_anova = pb_anova,
+      full_model = full,
+      dispersion_test = disp_test)
+      
+    )
+    
+  }, error = function(e) {
+    message("Failed for species ", unique(data$tSpp), ": ", e$message)
+    return(NULL)
+  })
+})
+
+# Drop NULLs (failed models (ie. rare species))
+spcmodel_listRemneta_simpleb <- Filter(Negate(is.null), spcmodel_listRemneta_simple)
+length(spcmodel_listRemneta_simple)
+length(spcmodel_listRemneta_simpleb)
+
+# Turn list into a dataframe
+results_df <- data.frame()
+
+for (species in names(spcmodel_listRemneta_simpleb)) {
+  
+  mod <- spcmodel_listRemneta_simpleb[[species]]
+  
+  # print quick info
+  print(species)
+  print(fixef(mod$full_model))
+  
+  estimate <- fixef(mod$full_model)["Survey_Year2025"]
+  evidence_overdisp <- mod$dispersion_test$p.value
+  
+  tmp <- data.frame(
+    Species  = mod$species,
+    Estimate = estimate,
+    overdisp_pval = evidence_overdisp,
+    P_value  = mod$pvalue[2]
+  )
+  
+  results_df <- rbind(results_df, tmp)
+}
+
+# Plotting and interpretation
+results_df$Significant <- ifelse(results_df$P_value < 0.05, "P <0.05", "NS")
+results_df <- left_join(results_df, spxsp_df_spp, by = c("Species" = "tSpp"))
+results_df$Species <- factor(results_df$Species, levels = results_df$Species[order(results_df$Estimate, decreasing = FALSE)])
+results_df$tName <- factor(results_df$tName, levels = results_df$tName[order(results_df$Estimate, decreasing = FALSE)])
+
+results_df$P_adj <- p.adjust(results_df$P_value, method = "BH")
+results_df$Significance <- ifelse(results_df$P_value < 0.05, "P < 0.05", "NS")
+results_df$Significance <- ifelse(results_df$P_adj < 0.05, "Padj < 0.05", results_df$Significance)
+results_df$Significance <- factor(results_df$Significance, levels = c("Padj < 0.05", "P < 0.05", "NS"))
+
+# Plotting details
+results_df_remnant <- results_df %>%
+  mutate(
+    Change = case_when(
+      Estimate < 0 & Significance == "Padj < 0.05" ~ "Significant decrease",
+      Estimate > 0 & Significance == "Padj < 0.05" ~ "Significant increase",
+      TRUE ~ "No significant change"
+    )
+  )
+
+plot_Remn_s <- ggplot(results_df_remnant, aes(x = tName, y = Estimate, fill = Change))+
+  geom_col(colour = "black")+coord_flip()+
+  # ylim(-30, 30)+ 
   theme_test()+
-  labs(y = "Log odds ratio of species presence:\n 2015 (reference group) vs 2025", x = "Bird species")
+  labs(y = "Effect size (log-odds) for species presence\nrelative to 2015 surveys", x = "Species", title="Remnant sites only")+
+  scale_fill_manual(values = c("Significant decrease" = "darkred", "Significant increase" = "darkblue", "No significant change" = "grey"))
+plot_Remn_s
 
-table(df_tot_Remnant$Significance)
-# Padj < 0.05    P < 0.05          NS 
-#           2           7          20 
+### 2025 comparisons across remnant vs reveg  ----------------------------------
+spxsp_split_2025 <- split(spxsp_df_2025, spxsp_df_2025$tSpp)
 
-# arrange all plots together 
-ggpubr::ggarrange(birdchange_2015, birdchange_2025,
-                  align="hv", labels = c("a)", "b)"))
-# ggsave(filename = "Log-odds-bird-RemRev.pdf", path = outdir, width = 12, height = 10)
-ggpubr::ggarrange(birdchange_2015_sig, birdchange_2025_sig,
-                  align="hv", labels = c("a)", "b)"))
-# ggsave(filename = "Log-odds-bird-RemRev-significant_only.pdf", path = outdir, width = 12, height =10)
+# Analysis of species
+spcmodel_list2025_simple <- lapply(spxsp_split_2025, function(data) {
+  
+  # Skip rare species
+  if (sum(data$Presence == 1, na.rm = TRUE) < 6) return(NULL)
+  
+  tryCatch({
+    
+    full <- glmer(Presence ~ RemRev + (1 | WptID), family = binomial(), data = data,
+                  control = glmerControl(optimizer = "nloptwrap",  optCtrl = list(maxfun = 1e6)))
+    
+    null <- glmer(Presence ~ 1 + (1 | WptID), family = binomial(), data = data, 
+                  control = glmerControl(optimizer = "nloptwrap",  optCtrl = list(maxfun = 1e6)))
+    
+    # pb <- PBmodcomp(full, null, nsim = 999)
+    pb_anova <- anova(full, null)
+    p_val <- pb_anova$`Pr(>Chisq)`
+    # print(pb)
+    
+    # test for overdispersion
+    sim_res <- simulateResiduals(fittedModel = full)
+    plot(sim_res)
+    disp_test <- testDispersion(sim_res)
+    
+    return(list(
+      species = unique(data$tSpp),
+      pvalue = p_val,
+      full_anova = pb_anova,
+      full_model = full,
+      dispersion_test = disp_test)
+      
+    )
+    
+  }, error = function(e) {
+    message("Failed for species ", unique(data$tSpp), ": ", e$message)
+    return(NULL)
+  })
+})
 
-ggpubr::ggarrange(birdchange_rev, birdchange_rem,
-                  align="hv", labels = c("a)", "b)"))
-# ggsave(filename = "Log-odds-bird-survey_years.pdf", path = outdir, width = 12, height = 10)
+# Drop NULLs (failed models (ie. rare species))
+spcmodel_list2025_simpleb <- Filter(Negate(is.null), spcmodel_list2025_simple)
+length(spcmodel_list2025_simple)
+length(spcmodel_list2025_simpleb)
 
-ggpubr::ggarrange(birdchange_rev_sig, birdchange_rem_sig,
-                  align="hv", labels = c("a)", "b)"))
-# ggsave(filename = "Log-odds-bird-survey_years-significant_only.pdf", path = outdir, width = 12, height =10)
+# Turn list into a dataframe
+results_df <- data.frame()
+
+for (species in names(spcmodel_list2025_simpleb)) {
+  
+  mod <- spcmodel_list2025_simpleb[[species]]
+  
+  # print quick info
+  print(species)
+  print(fixef(mod$full_model))
+  
+  estimate <- fixef(mod$full_model)["RemRevRevegetation"]
+  evidence_overdisp <- mod$dispersion_test$p.value
+  
+  tmp <- data.frame(
+    Species  = mod$species,
+    Estimate = estimate,
+    overdisp_pval = evidence_overdisp,
+    P_value  = mod$pvalue[2]
+  )
+  
+  results_df <- rbind(results_df, tmp)
+}
+
+# Plotting and interpretation
+results_df$Significant <- ifelse(results_df$P_value < 0.05, "P <0.05", "NS")
+results_df <- left_join(results_df, spxsp_df_spp, by = c("Species" = "tSpp"))
+results_df$Species <- factor(results_df$Species, levels = results_df$Species[order(results_df$Estimate, decreasing = FALSE)])
+results_df$tName <- factor(results_df$tName, levels = results_df$tName[order(results_df$Estimate, decreasing = FALSE)])
+
+results_df$P_adj <- p.adjust(results_df$P_value, method = "BH")
+results_df$Significance <- ifelse(results_df$P_value < 0.05, "P < 0.05", "NS")
+results_df$Significance <- ifelse(results_df$P_adj < 0.05, "Padj < 0.05", results_df$Significance)
+results_df$Significance <- factor(results_df$Significance, levels = c("Padj < 0.05", "P < 0.05", "NS"))
+
+# Plotting details
+results_df_2025only <- results_df %>%
+  mutate(
+    Change = case_when(
+      Estimate < 0 & Significance == "Padj < 0.05" ~ "Significant decrease",
+      Estimate > 0 & Significance == "Padj < 0.05" ~ "Significant increase",
+      TRUE ~ "No significant change"
+    )
+  )
+
+plot_2025_s <- ggplot(results_df_2025only, aes(x = tName, y = Estimate, fill = Change))+
+  geom_col(colour = "black")+coord_flip()+
+  # ylim(-30, 30)+ 
+  theme_test()+
+  labs(y = "Effect size (log-odds) for species presence\nrelative to remnant sites", x = "Species", title="2025 surveys only")+
+  scale_fill_manual(values = c("Significant decrease" = "darkred", "Significant increase" = "darkblue", "No significant change" = "grey"))
+plot_2025_s
+
+
+### 2015 comparisons across remnant vs reveg  ----------------------------------
+###  comparisons across years --------------------------------------
+spxsp_split_2015 <- split(spxsp_df_2015, spxsp_df_2015$tSpp)
+
+# Analysis of species
+spcmodel_list2015_simple <- lapply(spxsp_split_2015, function(data) {
+  
+  # Skip rare species
+  if (sum(data$Presence == 1, na.rm = TRUE) < 6) return(NULL)
+  
+  tryCatch({
+    
+    full <- glmer(Presence ~ RemRev + (1 | WptID), family = binomial(), data = data,
+                  control = glmerControl(optimizer = "nloptwrap",  optCtrl = list(maxfun = 1e6)))
+    
+    null <- glmer(Presence ~ 1 + (1 | WptID), family = binomial(), data = data, 
+                  control = glmerControl(optimizer = "nloptwrap",  optCtrl = list(maxfun = 1e6)))
+    
+    # pb <- PBmodcomp(full, null, nsim = 999)
+    pb_anova <- anova(full, null)
+    p_val <- pb_anova$`Pr(>Chisq)`
+    # print(pb)
+    
+    # test for overdispersion
+    sim_res <- simulateResiduals(fittedModel = full)
+    plot(sim_res)
+    disp_test <- testDispersion(sim_res)
+    
+    return(list(
+      species = unique(data$tSpp),
+      pvalue = p_val,
+      full_anova = pb_anova,
+      full_model = full,
+      dispersion_test = disp_test)
+      
+    )
+    
+  }, error = function(e) {
+    message("Failed for species ", unique(data$tSpp), ": ", e$message)
+    return(NULL)
+  })
+})
+
+# Drop NULLs (failed models (ie. rare species))
+spcmodel_list2015_simpleb <- Filter(Negate(is.null), spcmodel_list2015_simple)
+length(spcmodel_list2015_simple)
+length(spcmodel_list2015_simpleb)
+
+# Turn list into a dataframe
+results_df <- data.frame()
+
+for (species in names(spcmodel_list2015_simpleb)) {
+  
+  mod <- spcmodel_list2015_simpleb[[species]]
+  
+  # print quick info
+  print(species)
+  print(fixef(mod$full_model))
+  
+  estimate <- fixef(mod$full_model)["RemRevRevegetation"]
+  evidence_overdisp <- mod$dispersion_test$p.value
+  
+  tmp <- data.frame(
+    Species  = mod$species,
+    Estimate = estimate,
+    overdisp_pval = evidence_overdisp,
+    P_value  = mod$pvalue[2]
+  )
+  
+  results_df <- rbind(results_df, tmp)
+}
+
+# Plotting and interpretation
+results_df$Significant <- ifelse(results_df$P_value < 0.05, "P <0.05", "NS")
+results_df <- left_join(results_df, spxsp_df_spp, by = c("Species" = "tSpp"))
+results_df$Species <- factor(results_df$Species, levels = results_df$Species[order(results_df$Estimate, decreasing = FALSE)])
+results_df$tName <- factor(results_df$tName, levels = results_df$tName[order(results_df$Estimate, decreasing = FALSE)])
+
+results_df$P_adj <- p.adjust(results_df$P_value, method = "BH")
+results_df$Significance <- ifelse(results_df$P_value < 0.05, "P < 0.05", "NS")
+results_df$Significance <- ifelse(results_df$P_adj < 0.05, "Padj < 0.05", results_df$Significance)
+results_df$Significance <- factor(results_df$Significance, levels = c("Padj < 0.05", "P < 0.05", "NS"))
+
+# Plotting details
+results_df_2015only <- results_df %>%
+  mutate(
+    Change = case_when(
+      Estimate < 0 & Significance == "Padj < 0.05" ~ "Significant decrease",
+      Estimate > 0 & Significance == "Padj < 0.05" ~ "Significant increase",
+      TRUE ~ "No significant change"
+    )
+  )
+
+plot_2015_s <- ggplot(results_df_2015only, aes(x = tName, y = Estimate, fill = Change))+
+  geom_col(colour = "black")+coord_flip()+
+  # ylim(-30, 30)+ 
+  theme_test()+
+  labs(y = "Effect size (log-odds) for species presence\nrelative to remnant sites", x = "Species", title="2015 surveys only")+
+  scale_fill_manual(values = c("Significant decrease" = "darkred", "Significant increase" = "darkblue", "No significant change" = "grey"))
+plot_2015_s
+
+### Combined plots -------------------------------------------------------------
+birds_by_year <- ggpubr::ggarrange(plot_2015_s, plot_2025_s, align = "hv")
+birds_by_year
+# ggsave(filename = "Log-odds-bird-survey_split_glmer.pdf", path = outdir, width = 12, height = 10)
+
+birds_by_treatment <- ggpubr::ggarrange(plot_Reveg_s, plot_Remn_s, align = "hv", common.legend = TRUE)
+birds_by_treatment
+# ggsave(filename = "Log-odds-bird-remrev_split_glmer.pdf", path = outdir, width = 12, height = 10)
 
 # EVONET functional information (global database of species) -------------------
 all_bird_data2$Species1 <- all_bird_data2$tSpp
@@ -708,7 +756,7 @@ all_bird_data2$Species1 <- all_bird_data2$tSpp
 
 ## Attatch Functions to data ---------------------------------------------------
 bird_functional_full 
-bird_functional <- read.csv(file = "//PATH/TO/DATA/Bird database stuff/AVONET/ELEData/TraitData/AVONET1_BirdLife.csv")
+bird_functional <- read.csv(file = "/PATH/TO/DATA/Bird database stuff/AVONET/ELEData/TraitData/AVONET1_BirdLife.csv")
 bird_functional_full <- bird_functional
 
 bird_functional <- bird_functional %>% 
@@ -761,6 +809,18 @@ name_map <- c(
   "Platycercus elegans 'adelaidae' (NC)" = "Platycercus elegans",
   "Northiella haematogaster haematogaster (NC)" = "Northiella haematogaster"
 )
+
+# # Check on my small subset of data
+# bird_functional_CLLMM_SC_NA1$Species1 <-
+#   ifelse(
+#     bird_functional_CLLMM_SC_NA1$Species1 %in% names(name_map),
+#     name_map[bird_functional_CLLMM_SC_NA1$Species1],
+#     bird_functional_CLLMM_SC_NA1$Species1
+#   )
+# bird_functional_CLLMM_SC_NA1 <-bird_functional_CLLMM_SC_NA1 %>%
+#   select(tSpp, tName, Species1)
+# bird_functional_CLLMM_SC_NA1 <- left_join(bird_functional_CLLMM_SC_NA1, bird_functional, by ="Species1")
+# # View(bird_functional_CLLMM_SC_NA1)
 
 all_bird_data_updated <- all_bird_data2
 
@@ -843,6 +903,7 @@ mean_bird_fun_alphadiversity$Treat_type <- factor(mean_bird_fun_alphadiversity$T
 
 library(ggpubr)
 
+
 plot_fun_richness <- ggplot(mean_bird_fun_alphadiversity, aes(x = Treat_type, y = mean_Richness, fill = Treat_type))+
   geom_violin()+
   geom_boxplot(outlier.shape = NA, width = 0.1, fill = "white")+
@@ -894,6 +955,7 @@ colnames(bird_functional_CLLMM_Fixed)
 # "Trophic.Niche"          "Primary.Lifestyle"      "Tropic_Niche_Lifestyle"
 
 # bird_functional_CLLMM_Fixed
+
 
 bird_functional_CLLMM_Fixed$One_ID_Var <- paste0(bird_functional_CLLMM_Fixed$Survey_Year, "_G", bird_functional_CLLMM_Fixed$WptID, "_", bird_functional_CLLMM_Fixed$iVisitID, "_py", bird_functional_CLLMM_Fixed$iPlantYear)
 
@@ -1083,7 +1145,7 @@ ggpubr::ggarrange(
     facet_grid(~Survey_Year, scales = "free_x", space = "free_x")+
     theme(axis.text.x = element_text(angle = 45, hjust = 1)),
   align = "hv"
-  )
+)
 # ggsave(filename = "Bird-Stack-FUNCTIONS-TrophicNiche-SurveyYear_RemRev.pdf", path = outdir, width = 13, height = 6)
 
 ggpubr::ggarrange(
@@ -1266,7 +1328,7 @@ TLN_colours <- c(
   "Carnivore: Invertivore"      = "#EF6C00", "Herbivore: Herbivore aquatic" = "#2E7D32", "Omnivore: Nectarivore" = "#1976D2",
   "Carnivore: Omnivore"         = "#FFB300", "Herbivore: Nectarivore"       = "#66BB6A", "Omnivore: Omnivore"    = "#64B5F6",
   "Carnivore: Vertivore"        = "#FFE0B2",  "Herbivore: Omnivore"         = "#B9F6CA", "NA: NA"                = "darkgrey"
-  )
+)
 
 bird_fun_Groups_stack_TLN$Treat_type <- factor(bird_fun_Groups_stack_TLN$Treat_type, levels = c("Revegetated", "Remnant"))
 
@@ -1370,7 +1432,7 @@ Life_niche_colours <- c(
   "Insessorial: Nectarivore" = "#8E24AA", "Aerial: Invertivore"      = "#1976D2", "Terrestrial: Invertivore"      = "#FFB300", "Generalist: Vertivore"   = "#EF9A9A",
   "Insessorial: Omnivore"    = "#CE93D8", "Aerial: Omnivore"         = "#64B5F6", "Terrestrial: Omnivore"         = "#FFE0B2",  
   "Insessorial: Vertivore"   = "#F3E5F5", "NA: NA" = "darkgrey"
-  )
+)
 
 bird_fun_Groups_stack_LifeNiche$Treat_type <- factor(bird_fun_Groups_stack_LifeNiche$Treat_type, levels = c("Revegetated", "Remnant"))
 
@@ -1472,32 +1534,32 @@ unique(bird_fun_Groups_stack_LifeNicheREV$Trophic.Lifestyle_NicheREV)
 NICHE_LIFE_colours <- c(
   "Aquatic predator: Aerial"      = "#DAA520",
   "Aquatic predator: Aquatic"     = "#FFDB58",
-   "Aquatic predator: Terrestrial"= "#FFB300",
-   
-   "Granivore: Insessorial"       = "#1B5E20",
-   "Granivore: Terrestrial"       = "#66BB6A",
-   
-   "Herbivore aquatic: Aquatic"   = "#FFE0B2",
-   
-   "Invertivore: Aerial"          = "#3E2723",
-   "Invertivore: Generalist"      = "#6D4C41",
-   "Invertivore: Insessorial"     = "#A1887F",
-   "Invertivore: Terrestrial"     = "#D7CCC8",
-   
-   "Nectarivore: Insessorial"     = "#FF6F61",
-   
-   "Omnivore: Aerial"             = "#E3F2FD",
-   "Omnivore: Generalist"         = "#0D47A1",
-   "Omnivore: Insessorial"        = "#1976D2",
-   "Omnivore: Terrestrial"        = "#64B5F6",
-   
-   "Vertivore: Generalist"        = "#BF360C",
-   "Vertivore: Insessorial"       = "#EF6C00",
-   
-   "Vertivore: Aerial"            = "#4B0082",
-   
-   "NA: NA"                       = "darkgrey"
-   )
+  "Aquatic predator: Terrestrial"= "#FFB300",
+  
+  "Granivore: Insessorial"       = "#1B5E20",
+  "Granivore: Terrestrial"       = "#66BB6A",
+  
+  "Herbivore aquatic: Aquatic"   = "#FFE0B2",
+  
+  "Invertivore: Aerial"          = "#3E2723",
+  "Invertivore: Generalist"      = "#6D4C41",
+  "Invertivore: Insessorial"     = "#A1887F",
+  "Invertivore: Terrestrial"     = "#D7CCC8",
+  
+  "Nectarivore: Insessorial"     = "#FF6F61",
+  
+  "Omnivore: Aerial"             = "#E3F2FD",
+  "Omnivore: Generalist"         = "#0D47A1",
+  "Omnivore: Insessorial"        = "#1976D2",
+  "Omnivore: Terrestrial"        = "#64B5F6",
+  
+  "Vertivore: Generalist"        = "#BF360C",
+  "Vertivore: Insessorial"       = "#EF6C00",
+  
+  "Vertivore: Aerial"            = "#4B0082",
+  
+  "NA: NA"                       = "darkgrey"
+)
 
 bird_fun_Groups_stack_LifeNicheREV$Treat_type <- factor(bird_fun_Groups_stack_LifeNicheREV$Treat_type, levels = c("Revegetated", "Remnant"))
 
@@ -1573,7 +1635,7 @@ ggpubr::ggarrange(ggplot(bird_fun_Groups_stack_Lifestyle, aes(x = Treat_type, y 
                   , align = "hv")
 # ggsave(filename = "Bird-Stack-FUNCTIONS-all-two_stackploats-SurveyYear_RemRev.pdf", path = outdir, width = 13, height = 6)
 
- ### stats ----------------------------------------------------------------------
+### stats ----------------------------------------------------------------------
 bird_functional_CLLMM_Fixed_MODEL <- bird_functional_CLLMM_Fixed_prop
 bird_functional_CLLMM_Fixed_MODEL$Survey_Year <- as.factor(bird_functional_CLLMM_Fixed_MODEL$Survey_Year)
 # bird_functional_CLLMM_Fixed_MODEL$count <- 1
@@ -1587,7 +1649,7 @@ summary(model_aquatic)
 # Survey_Year2025        0.16063    0.22209   0.723    0.470
 
 model_aquatic_sy <- glmer(FunG_count ~ Treat_type + (1|Survey_Year) + (1|Site_ID_Var), family = poisson(), 
-                       data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Aquatic predator",])
+                          data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Aquatic predator",])
 summary(model_aquatic_sy) # not sig
 
 model_graniv <- glmer(FunG_count ~ Treat_type + Survey_Year + (1|Site_ID_Var), family = poisson(), 
@@ -1599,7 +1661,7 @@ summary(model_graniv)
 # Survey_Year2025         0.0156     0.1187   0.131    0.895    
 
 model_graniv_sy <- glmer(FunG_count ~ Treat_type + (1|Survey_Year) + (1|Site_ID_Var), family = poisson(), 
-                      data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Granivore",])
+                         data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Granivore",])
 summary(model_graniv_sy) # not sig
 
 model_invert <- glmer(FunG_count ~ Treat_type * Survey_Year + (1|Site_ID_Var), family = poisson(), 
@@ -1620,7 +1682,7 @@ summary(model_nect)
 # Survey_Year2025        0.07714    0.18040   0.428   0.6690  
 
 model_nect_sy <- glmer(FunG_count ~ Treat_type + (1|Survey_Year) + (1|Site_ID_Var), family = poisson(), 
-                    data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Nectarivore",])
+                       data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Nectarivore",])
 summary(model_nect_sy) # not sig
 
 model_omni <- glmer(FunG_count ~ Treat_type + Survey_Year + (1|Site_ID_Var), family = poisson(), 
@@ -1640,7 +1702,7 @@ summary(model_vert)
 # Survey_Year2025       -0.04096    0.73603  -0.056    0.956
 
 model_vert_sy <- glmer(FunG_count ~ Treat_type + (1|Survey_Year) + (1|Site_ID_Var), family = poisson(), 
-                    data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Vertivore",])
+                       data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Vertivore",])
 summary(model_vert_sy) # not sig
 
 
@@ -1657,8 +1719,8 @@ wide_bird_data_site_save <- wide_bird_data_site
 wide_bird_data_site_save$sample_id_new <- rownames(wide_bird_data_site_save)
 
 wide_bird_data_site_save$sample_id_new <- str_replace(wide_bird_data_site_save$sample_id_new,
-  "^(\\d{4})_([^_]+)_.*$",
-  "\\2_\\1"
+                                                      "^(\\d{4})_([^_]+)_.*$",
+                                                      "\\2_\\1"
 )
 rownames(wide_bird_data_site_save) <- wide_bird_data_site_save$sample_id_new
 wide_bird_data_site_save <- wide_bird_data_site_save %>%
@@ -1679,7 +1741,7 @@ bird_functional_ABD_NEST <- bird_functional_ABD %>%
   select(matches("X4_"), matches("X5_"), matches("X6_"), matches("X3_"), matches("X29_"), matches("X71_"), matches("_Nest_location_"))
 
 # bird_functional_ABD_POPDESC <- bird_functional_ABD %>% 
-  # select(matches("X4_"), matches("X5_"), matches("X6_"), matches("X3_"), matches("X29_Population_description_4"))
+# select(matches("X4_"), matches("X5_"), matches("X6_"), matches("X3_"), matches("X29_Population_description_4"))
 
 ### ABD Nesting --------------------------------------------------------------------
 bird_nest_long <- bird_functional_ABD_NEST %>%
@@ -1921,10 +1983,10 @@ new_order_table <- data.frame(
   Order2 = c("Passeriformes",   "Psittaciformes" , "Columbiformes", "Pelecaniformes",
              "Charadriiformes",  "Accipitriformes","Other orders",  "Other orders", 
              "Other orders",     "Other orders",   "Other orders",  "Other orders")
-  )
+)
 
 bird_wide_rel_alluvial5 <- left_join(bird_wide_rel_alluvial4, new_order_table, 
-                                            by = "Order1")
+                                     by = "Order1")
 # need to do "minor orders" columns
 bird_wide_rel_alluvial5$count <- 1
 
@@ -1990,13 +2052,11 @@ bird_alluvial_counts_visit2 <- bird_alluvial_counts_visit %>%
            Primary.Lifestyle, Trophic.Niche, Nest_Level, Population_description,)%>%
   reframe(meancounts= mean(count),
           prop = mean(count)/sum(count))
-  
+
 bird_alluvial_counts_visit2 %>%
   group_by(Survey_Year, Treat_type, Order2, Primary.Lifestyle, 
            Trophic.Niche, Nest_Level, Population_description,)%>%
   reframe(total = sum(prop)) %>% View()
-  
-
 
 group_by(Survey_Year, Treat_type,
          Order2,
@@ -2366,7 +2426,7 @@ bird_trophic_summary2 <- bird_food_long3 %>%
     
     All_Trophic_Niches = list(unique(Trophic_Niche)),
     n_Trophic_niches = n_distinct(Trophic_Niche)
-    )
+  )
 
 bird_trophic_summary2$Trophic_niches_Weighting <- 1/bird_trophic_summary2$n_Trophic_niches
 bird_trophic_summary2$Species <- paste0(bird_trophic_summary2$X4_Genus_name_2, " ", bird_trophic_summary2$X5_Species_name_2)
