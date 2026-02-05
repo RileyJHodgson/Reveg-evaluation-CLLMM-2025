@@ -240,11 +240,11 @@ jid_amr_map_comb=$(sbatch --export=ALL \
 # *** Phase 4 *** ------------------------------------------------------------------------
 # --- Finalise outputs/clean-up files ---
 
-# remove fastp outputs once completed jid_kraken, jid_kraken_oom, jid_superfocus and jid_bt2_map complete
+# remove fastp outputs once completed jid_kraken, jid_superfocus and jid_bt2_map complete
 jid_finish_qc=$(sbatch --export=ALL \
   --parsable \
   --array=1-"$NSAMPLES" \
-  --dependency=afterok:$jid_kraken:$jid_kraken_oom:$jid_superfocus:$jid_bt2_map:$jid_SPF \
+  --dependency=afterok:$jid_kraken:$jid_superfocus:$jid_bt2_map:$jid_SPF \
   steps-array/finish-QC-array.sh)
 
 # remove kraken-suite outputs once completed jid_kraken, jid_bracken, jid_ktools, jid_cpm, and jid_combine_pfp complete
