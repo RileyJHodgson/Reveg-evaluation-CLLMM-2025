@@ -39,4 +39,4 @@ python "${KR_TOOL_DIR}/combine_mpa.py" \
 echo "Combined MPA written to: ${out_root}/combined_standard.mpa"
 
 # Clean up old files
-# rm "${mpa_files[@]}"
+rm "${mpa_files[@]}"
