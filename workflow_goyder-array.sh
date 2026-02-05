@@ -3,8 +3,8 @@
 #SBATCH --time=00:10:00
 #SBATCH --mem=4000M
 #SBATCH --cpus-per-task=1
-#SBATCH --output=workflow_%A_%a.out
-#SBATCH --error=workflow_%A_%a.err
+#SBATCH --output=workflow_%j.out
+#SBATCH --error=workflow_%j.err
 
 # FULL example: sbatch workflow_goyder-array.sh --manifest ./resources/sample_manifest_full-unique.txt --raw-fastqs ./merged_fastqs --output ./complete_results
 # TEST example: sbatch workflow_goyder-array.sh --manifest ./resources/sample-manifest.txt --raw-fastqs ./fastqs --output ./results_array
