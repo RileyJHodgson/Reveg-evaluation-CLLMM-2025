@@ -272,7 +272,7 @@ jid_finish_contigs=$(sbatch --export=ALL \
 jid_finish_map_amr_waste=$(sbatch --export=ALL \
   --parsable \
   --array=1-"$NSAMPLES" \
-  --dependency=afterok:$jid_amr_map_comb\
+  --dependency=afterok:$jid_amr_map_comb \
   steps-array/finish-amr-mapping-array.sh)
 
 # Summary
