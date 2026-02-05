@@ -260,15 +260,15 @@ jid_amr_map_comb=$(sbatch --export=ALL \
 #   -dependency=afterok:$jid_amr_map_comb\
 #   steps-array/finish-amr-mapping-array.sh)
 
-# summary
+# Summary
 echo ""
 echo "Summary:"
-echo "  Taxonomy output files contained in $OUT_DIR/combined_standard.mpa and/or combined_oom"
-echo "  Functional genes output contained in $OUT_DIR/functions_counts.csv and functional_percentages.csv"
-echo "  AMR gene count output contained in $OUT_DIR/amr-reads-summary.csv"
+echo "  - Taxonomy output files will be found in $OUT_DIR/combined_standard.mpa and/or combined_oom"
+echo "  - Functional output files will be found in $OUT_DIR/functions_counts.csv and functional_percentages.csv"
+echo "  - AMR gene count output will be found in $OUT_DIR/amr-reads-summary.csv"
 echo ""
 echo "NOTE:"
-echo "  taxonomy, functional and AMR outputs have all been normalised for prokaryotic fraction using singlem, and sampling depth via total abundances"
+echo "  Taxonomy, functional and AMR outputs have all been normalised for prokaryotic fraction using singlem, and sampling depth via total abundances"
 echo "  counts_per_million_prokaryotes = read_counts / ((total_reads_persample x (singlem_prokaryotic_fraction / 100)) ) x 10^6"
 echo ""
 echo "  This accounts for:..."
@@ -276,6 +276,6 @@ echo "          1 *Sequencing depth* (library size) via the CPM-style scaling"
 echo "          2 *Between-sample variation in prokaryotic content* via the SingleM prokaryotic fraction in the denominator"
 echo "   I.E., Estimated prokaryote-normalised read abundance: 'reads assigned to a taxon per million estimated prokaryotic reads in that sample'."
 echo ""
-echo "All interim files deleted at conclusion of scritpt"
+echo "All interim files will deleted upon conclusion of the pipeline"
 
 # *** END *** ------------------------------------------------------------------------
