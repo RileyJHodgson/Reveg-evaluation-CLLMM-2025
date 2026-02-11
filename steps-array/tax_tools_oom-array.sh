@@ -27,10 +27,9 @@ mkdir -p "$out_root"
 out_root="$(realpath "$out_root")"
 
 # Paths to kraken tools scripts
-KR_TOOL_DIR="$submit_dir/resources/KrakenTools-1.2"
+res_root="${TAX_DB:-$submit_dir/resources}"
+KR_TOOL_DIR="${res_root}/KrakenTools-1.2"
 KR_TOOL_DIR="$(realpath "$KR_TOOL_DIR")"
-
-echo "Looking for  Kraken tools scripts in: $KR_TOOL_DIR"
 
 # Paths to output scripts
 tax_dir="${out_root}/${sample}/tax"
@@ -40,17 +39,21 @@ krona_dir="${tax_dir}/out_krona_reports"
 mkdir -p "$mpa_dir" "$krona_dir"
 
 mpa_dir="$(realpath "$mpa_dir")"
+krona_dir="$(realpath "$krona_dir")"
 
 # run scripts
 python  "$KR_TOOL_DIR"/kreport2mpa.py \
-    -r "$tax_dir"/"${sample}.bracken_report" \
-    -o "$mpa_dir"/"${sample}.mpa_breport" \
+    -r "$tax_dir"/"${sample}.bracken_oom_report" \
+    -o "$mpa_dir"/"${sample}.mpa_oom_breport" \
     --display-header
+python "$KR_TOOL_DIR"/kreport2krona.py \
+        --report "$tax_dir"/"${sample}.bracken_oom_report" \
+        --output "$krona_dir"/"${sample}_oom.krona" \
+        --no-intermediate-ranks
 
-echo "completed kreport2mpa.py and kreport2krona.py jobs"
+echo "completed kreport2mpa.py and kreport2krona.py jobs (oom)"
 
 # Clean up old files
-rm "$tax_dir"/"${sample}.bracken_report"
-
-echo "bracken ouput and reports for sample $sample removed"
+# rm "$tax_dir"/"${sample}.bracken_oom_report"
+# rm "$tax_dir"/"${sample}.bracken_oom_output"
 

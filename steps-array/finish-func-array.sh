@@ -13,10 +13,10 @@ sample=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $SAMP_MAN)
 out_root="${OUT_DIR:-$submit_dir/results}"
 out_root="$(realpath "$out_root")"
 
-contig_dir="${out_root}/${sample}/contigs"
-contig_dir="$(realpath "$contig_dir")"
+fun_dir="${out_root}/${sample}/func"
+fun_dir="$(realpath "$fun_dir")"
 
 # Remove spent files
-rm -r $contig_dir
-echo "Cleaned directory containing contigs files for sample $sample"
+rm -r $fun_dir
 
+echo "Cleaned directories containing functions files for sample $sample"

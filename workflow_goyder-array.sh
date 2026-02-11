@@ -114,6 +114,7 @@ jid_SPF=$(sbatch \
   --array=1-"$NSAMPLES" \
   --output="${logs_dir}/spf_%A_%a.out" \
   --error="${logs_dir}/spf_%A_%a.err" \
+  --dependency=afterok:$jid_QC \
   steps-array/singlem-array.sh)
 
 # *** Phase 2 *** ------------------------------------------------------------------------
@@ -240,31 +241,30 @@ jid_amr_map_comb=$(sbatch --export=ALL \
 # *** Phase 4 *** ------------------------------------------------------------------------
 # --- Finalise outputs/clean-up files ---
 
-# remove fastp outputs once completed jid_kraken, jid_superfocus and jid_bt2_map complete
+# remove fastp outputs once completed jid_kraken, jid_kraken_oom, jid_superfocus and jid_bt2_map complete
 jid_finish_qc=$(sbatch --export=ALL \
   --parsable \
   --array=1-"$NSAMPLES" \
+  --output="${logs_dir}/rm_qc_%A_%a.out" \
+  --error="${logs_dir}/rm_qc_%A_%a.err" \
   --dependency=afterok:$jid_kraken:$jid_superfocus:$jid_bt2_map:$jid_SPF \
   steps-array/finish-QC-array.sh)
 
-# remove kraken-suite outputs once completed jid_kraken, jid_bracken, jid_ktools, jid_cpm, and jid_combine_pfp complete
-jid_finish_tax=$(sbatch --export=ALL \
+# remove functional output directories after completing: jid_combine_sf
+jid_finish_qc=$(sbatch --export=ALL \
   --parsable \
   --array=1-"$NSAMPLES" \
-  --dependency=afterok:$jid_kraken:$jid_bracken:$jid_ktools:$jid_cpm:$jid_combine_pfp \
-  steps-array/finish-tax-array.sh)
-
-# remove superfocus outputs once completed jid_superfocus, jid_CPM_sf, and jid_combine_sf complete
-jid_finish_func=$(sbatch --export=ALL \
-  --parsable \
-  --array=1-"$NSAMPLES" \
-  --dependency=afterok:$jid_superfocus:$jid_CPM_sf:$jid_combine_sf \
+  --output="${logs_dir}/rm_sf_%A_%a.out" \
+  --error="${logs_dir}/rm_sf_%A_%a.err" \
+  --dependency=afterok:$jid_combine_sf \
   steps-array/finish-func-array.sh)
 
 # # remove the contigs files once jid_megahit, jid_bt2_index and jid_amr complete
 jid_finish_contigs=$(sbatch --export=ALL \
   --parsable \
   --array=1-"$NSAMPLES" \
+  --output="${logs_dir}/rm_contigs_%A_%a.out" \
+  --error="${logs_dir}/rm_contigs_%A_%a.err" \
   --dependency=afterok:$jid_megahit:$jid_bt2_index:$jid_amr \
   steps-array/finish-contigs-array.sh)
 
@@ -272,20 +272,24 @@ jid_finish_contigs=$(sbatch --export=ALL \
 jid_finish_map_amr_waste=$(sbatch --export=ALL \
   --parsable \
   --array=1-"$NSAMPLES" \
+  --output="${logs_dir}/rm_amr_%A_%a.out" \
+  --error="${logs_dir}/rm_amr_%A_%a.err" \
   --dependency=afterok:$jid_amr_map_comb \
   steps-array/finish-amr-mapping-array.sh)
 
 # Summary
 echo ""
+echo ""
 echo "Summary:"
-echo "  - Taxonomy output files will be found in $OUT_DIR/combined_standard.mpa and/or combined_oom"
-echo "  - Functional output files will be found in $OUT_DIR/functions_counts.csv and functional_percentages.csv"
-echo "  - AMR gene count output will be found in $OUT_DIR/amr-reads-summary.csv"
+echo "  - Taxonomy output files will be found in $OUT_DIR/combined_standard.mpa, a sample x species table with kraken2 standard database assign taxonomy in counts per million prokaryotic reads."
+echo "  - Functional output files will be found in $OUT_DIR/functions_counts.csv, a table with all SEED subsystem assigned functions normalised to produce counts per million prokaryotic reads."
+echo "  - AMR gene count output will be found in $OUT_DIR/amr-reads-summary.csv. The main metric calculated is FPKM_prokaryotes, see below."
 echo ""
 echo ""
-echo "NOTE:"
+echo "Details:"
 echo "  Taxonomy, functional and AMR outputs have all been normalised for prokaryotic fraction using singlem, and sampling depth via total abundances"
-echo "  counts_per_million_prokaryotes = read_counts / ((total_reads_persample x (singlem_prokaryotic_fraction / 100)) ) x 10^6"
+echo "  - counts_per_million_prokaryotes = read_counts / ((total_reads_persample x singlem_prokaryotic_fraction) ) x 10^6"
+echo "  - fragments_per_kilobase_per_million_prokaryotes = (10^9 x ARG_reads)/(ARG_length x total_reads_persample x singlem_prokaryotic_fraction)"
 echo ""
 echo "  This accounts for:..."
 echo "          1 *Sequencing depth* (library size) via the CPM-style scaling"

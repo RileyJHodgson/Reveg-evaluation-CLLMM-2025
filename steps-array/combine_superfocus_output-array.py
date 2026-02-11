@@ -115,15 +115,9 @@ def main() -> int:
     count_cols = [c for c in merged.columns if not c.endswith("_PERC")]
     merged_count = merged[count_cols]
     
-    # Perc-only (keys + *_PERC)
-    perc_cols = KEYS + [c for c in merged.columns if c.endswith("_PERC")]
-    merged_perc = merged[perc_cols]
-    
     merged_count.to_csv(os.path.join(out_dir, "functions_counts.csv"), index=False)
-    merged_perc.to_csv(os.path.join(out_dir, "functions_percentages.csv"), index=False)
 
-    print(f"Wrote:\n  {os.path.join(out_dir, 'functions_counts.csv')}\n"
-          f"  {os.path.join(out_dir, 'functions_percentages.csv')}")
+    print(f"Wrote:\n  {os.path.join(out_dir, 'functions_counts.csv')}")
     return 0
 
 

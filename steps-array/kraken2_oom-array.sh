@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --ntasks=1
-#SBATCH --time=4-0
-#SBATCH --mem=64000M
-#SBATCH --cpus-per-task=16
+#SBATCH --time=1-0
+#SBATCH --mem=8000M
+#SBATCH --cpus-per-task=2
 #SBATCH --nodes=1
 
 set -euo pipefail
@@ -22,13 +22,16 @@ out_root="${OUT_DIR:-$submit_dir/results}"
 mkdir -p "$out_root"
 out_root="$(realpath "$out_root")"
 
-qc_dir="${out_root}/${sample}/qc"
 tax_dir="${out_root}/${sample}/tax"
-mkdir -p "$qc_dir" "$tax_dir"
+mkdir -p "$tax_dir"
 
-# database paths. k2_standard_20251015 is default but can be set in workflow .sh file
-database="${TAX_DB:-$submit_dir/resources/k2_standard_20251015}"
-database="$(realpath "$database")"
+# database
+db_root="$submit_dir/resources"
+db_root="$(realpath "$db_root")"
+
+# /scratch/user/hodg0248/goyder/resources/k2_Oomycota_20250113
+database_oom="${db_root}/k2_Oomycota_20250113"
+database_oom="$(realpath "$database_oom")"
 
 # Temporary directory on compute node
 tmpdir="${SLURM_TMPDIR:-/scratch/user/${USER}/${SLURM_JOB_ID}}"
@@ -46,16 +49,16 @@ cd $tmpdir
 echo "Using tmpdir: $tmpdir"
 
 # kraken2
-kraken2 --db ${database} \
+kraken2 --db ${database_oom} \
     --threads 16 --memory-mapping --report-zero-counts --use-names \
     --paired "${sample}_R1.good.fastq.gz" "${sample}_R2.good.fastq.gz" \
-    --output "${sample}.k2_output" \
-    --report "${sample}.k2_report"
+    --output "${sample}.k2_oom_output" \
+    --report "${sample}.k2_oom_report"
 
 # Copy results back to storage
-# cp "${sample}.k2_output" "${tax_dir}/"
-cp "${sample}.k2_report" "${tax_dir}/"
+# cp "${sample}.k2_oom_output" "${tax_dir}/"
+cp "${sample}.k2_oom_report" "${tax_dir}/"
 
-echo "Kraken2 complete for sample $sample"
+echo "Kraken2 (oom) complete for sample $sample"
 
 # End

@@ -34,3 +34,6 @@ python steps-array/normalise_sf_cpm_prok.py \
 
 echo "CPM_prok normalisation complete for sample $sample"
 echo "Output: $out_file"
+
+rm $sf_file
+echo "Remove the now defunct superfocus output file for sample: $sample"

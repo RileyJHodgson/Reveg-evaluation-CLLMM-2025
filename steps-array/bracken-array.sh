@@ -53,10 +53,9 @@ bracken -r 100 -l S -t 16 \
 # cp "${sample}.bracken_output" "${tax_dir}/"
 cp "${sample}.bracken_report" "${tax_dir}/"
 
-echo "bracken (pfp) complete for sample $sample"
+echo "bracken complete for sample $sample"
 
-# rm "${tax_dir}/${sample}.k2_output" # these delete the k2 files
-# rm "${tax_dir}/${sample}.k2_report" # these delete the k2 files
-# echo "k2 reports for sample $sample removed"
+rm "${tax_dir}/${sample}.k2_report" # these delete the k2 files
+echo "k2 reports for sample $sample removed"
 
 # End

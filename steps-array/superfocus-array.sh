@@ -54,4 +54,6 @@ superfocus --query "${sample}_R1.good.fastq" \
 cp "super_out_${sample}/norm_${sample}_all_levels_and_function.xls" "${fun_dir}/"
 echo "superfocus complete for sample: $sample"
 
+rm -r "super_out_${sample}"
+
 # End
