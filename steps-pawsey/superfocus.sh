@@ -42,6 +42,7 @@ cd "$tmpdir"
 
 # Transfer files
 cp "${qc_dir}/${sample}_R1.good.fastq.gz" "$tmpdir/"
+gunzip "${sample}_R1.good.fastq.gz"
 
 superfocus --query "${sample}_R1.good.fastq" \
     --output_directory "super_out_${sample}" \
