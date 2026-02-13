@@ -1,0 +1,19 @@
+conda create -y -p /scratch/pawsey1018/rhodgson/envs/base_python python=3.13.5 pandas
+conda create -y -p /scratch/pawsey1018/rhodgson/envs/hostremoval python=3.13.5 fastp fastqc bowtie2 samtools -c conda-forge -c bioconda
+conda create -y -p /scratch/pawsey1018/rhodgson/envs/k2DB_env python=3.13.5 kraken2 bracken -c conda-forge -c bioconda 
+conda create -y -p /scratch/pawsey1018/rhodgson/envs/superfocusonly python=3.13.5 super-focus -c conda-forge -c bioconda 
+conda create -y -p /scratch/pawsey1018/rhodgson/envs/kraken-suite python=3.13.5 fastp fastqc pandas -c conda-forge -c bioconda 
+conda create -y -p /scratch/pawsey1018/rhodgson/envs/amrfinder python=3.13.5 ncbi-amrfinderplus -c conda-forge -c bioconda
+conda create -y -p /scratch/pawsey1018/rhodgson/envs/mega-contig python=3.13.5 megahit -c conda-forge -c bioconda
+
+conda create -c conda-forge -c bioconda --override-channels -p /scratch/pawsey1018/rhodgson/envs/singlem
+conda install singlem
+
+conda activate /scratch/pawsey1018/rhodgson/envs/base_python
+conda activate /scratch/pawsey1018/rhodgson/envs/hostremoval
+conda activate /scratch/pawsey1018/rhodgson/envs/singlem
+conda activate /scratch/pawsey1018/rhodgson/envs/k2DB_env
+conda activate /scratch/pawsey1018/rhodgson/envs/superfocusonly
+conda activate /scratch/pawsey1018/rhodgson/envs/kraken-suite
+conda activate /scratch/pawsey1018/rhodgson/envs/amrfinder
+conda activate /scratch/pawsey1018/rhodgson/envs/mega-contig
