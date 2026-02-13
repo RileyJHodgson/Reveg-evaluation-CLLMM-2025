@@ -1,7 +1,7 @@
 # Analysis of Goyder - CLLMM revegetation project (bird data)
 
 # Set working directory --------------------------------------------------------
-setwd("/PATH/TO/DATA")
+setwd("/PATH/TO/DATA/data_2025")
 
 # libraries
 library(readxl)
@@ -12,7 +12,7 @@ library(vegan)
 library(stringr)
 
 # create output directory
-outdir <- "/PATH/TO/DATA/R_output_birds"
+outdir <- "/PATH/TO/DATA/data_2025/R_output_birds"
 # dir.create(file.path(outdir))
 outdir <- file.path(outdir)
 
@@ -96,11 +96,12 @@ car::Anova(poisson_model)
 
 # Useful plot
 ggplot(richness_data_average, aes(x=Treat_type, y=mean_Richness, fill = Treat_type))+
-  geom_violin()+
+  geom_violin(alpha = 0.9)+
   geom_boxplot(outlier.shape = NA, width = 0.15, fill = "white")+
-  geom_jitter(width = 0.1, height = 0, alpha = 0.125)+
+  geom_jitter(width = 0.1, height = 0, alpha = 0.25)+
   theme_test()+
-  labs(y= "Mean bird richness", x = "Treatment")+
+  labs(y= "Bird richness", x = "Treatment", fill = "Treatment")+
+  scale_fill_manual(values = c("Revegetated" = "#D07C2C", "Remnant" = "#2E5E4E"))+
   facet_grid(~Survey_Year)
 # ggsave(filename = "Bird-Richness-SurveyYear_RemRev.pdf", path = outdir, width = 7, height = 6)
 
@@ -182,8 +183,13 @@ colnames(bird_metadata_s_Jacc)
 head(bird_metadata_s_Jacc)
 
 ggplot(bird_metadata_s_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =Treat_type))+
+  geom_point(size= 2.5, colour = "black")+
+  geom_point(size= 1.5, colour = "black")+
   geom_point(size= 2)+
+  geom_path(aes(group=WptID), alpha=0.25, colour = "grey")+
+  scale_colour_manual(values = c("Revegetated" = "#D07C2C", "Remnant" = "#1F5D50"))+
   scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
+  labs(colour = "Treatment", shape = "Survey year")+
   theme_test()
 # ggsave(filename = "Bird-BETA-NMDS-Jaccard-SurveyYear_RemRev.pdf", path = outdir, width = 7, height = 6)
 
@@ -210,7 +216,7 @@ all_bird_visit_beta <- all_bird_data %>%
 set.seed(123)
 adonis2(dist_mat_jaccard_bird ~ Survey_Year * Treat_type, data = all_bird_visit_beta,
         strata = all_bird_visit_beta$WptID
-)
+        )
 # Permutation test for adonis under reduced model
 # Terms added sequentially (first to last)
 # Blocks:  strata 
@@ -235,7 +241,7 @@ spxsp_df$Presence <- 1
 spxsp_df_spp <- all_bird_data %>% 
   select(tSpp, tName) %>%
   distinct()
-
+  
 metadata_v$Old_WptID <- as.numeric(metadata_v$Old_WptID)
 spxsp_df <- left_join(spxsp_df, metadata_v, by = c("WptID" = "iWptID", "Old_WptID"))
 colnames(spxsp_df)
@@ -323,7 +329,7 @@ spcmodel_listRevegeta_simple <- lapply(spxsp_split_rev, function(data) {
   
   # Skip rare species
   if (sum(data$Presence == 1, na.rm = TRUE) < 6) return(NULL)
-  
+
   tryCatch({
     
     full <- glmer(Presence ~ Survey_Year + (1 | WptID), family = binomial(), data = data,
@@ -756,7 +762,7 @@ all_bird_data2$Species1 <- all_bird_data2$tSpp
 
 ## Attatch Functions to data ---------------------------------------------------
 bird_functional_full 
-bird_functional <- read.csv(file = "/PATH/TO/DATA/Bird database stuff/AVONET/ELEData/TraitData/AVONET1_BirdLife.csv")
+bird_functional <- read.csv(file = /PATH/TO/DATA/data_2025/Bird database stuff/AVONET/ELEData/TraitData/AVONET1_BirdLife.csv")
 bird_functional_full <- bird_functional
 
 bird_functional <- bird_functional %>% 
@@ -1045,13 +1051,16 @@ colnames(points_Jacc_funs) <- c("MDS1_FUN", "MDS2_FUN", "Site_ID_Var")
 bird_metadata_s_Jacc2 <- left_join(bird_metadata_s_Jacc, points_Jacc_funs, by = "Site_ID_Var")
 bird_metadata_s_Jacc2$Survey_Year <- as.factor(bird_metadata_s_Jacc2$Survey_Year)
 
-colnames(bird_metadata_s_Jacc2)
 # "Site_ID"      "Survey_Year"  "iWptID"       "iPlantYear"   "iTreatID"     "iEcosystemID"
 # "tEcoName"     "MDS1"         "MDS2"
 head(bird_metadata_s_Jacc2)
 
 ggplot(bird_metadata_s_Jacc2, aes(x = MDS1_FUN, y = MDS2_FUN, shape = Survey_Year, colour =Treat_type))+
+  geom_point(size= 2.5, colour = "black")+
+  geom_point(size= 1.5, colour = "black")+
   geom_point(size= 2)+
+  geom_path(aes(group=WptID), alpha=0.25, colour = "grey")+
+  scale_colour_manual(values = c("Revegetated" = "#D07C2C", "Remnant" = "#1F5D50"))+
   scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
   theme_test()
 # ggsave(filename = "Bird-BETA-NMDS-Jaccard-FUNCTIONAL-SurveyYear_RemRev.pdf", path = outdir, width = 7, height = 6)
@@ -1145,7 +1154,7 @@ ggpubr::ggarrange(
     facet_grid(~Survey_Year, scales = "free_x", space = "free_x")+
     theme(axis.text.x = element_text(angle = 45, hjust = 1)),
   align = "hv"
-)
+  )
 # ggsave(filename = "Bird-Stack-FUNCTIONS-TrophicNiche-SurveyYear_RemRev.pdf", path = outdir, width = 13, height = 6)
 
 ggpubr::ggarrange(
@@ -1328,7 +1337,7 @@ TLN_colours <- c(
   "Carnivore: Invertivore"      = "#EF6C00", "Herbivore: Herbivore aquatic" = "#2E7D32", "Omnivore: Nectarivore" = "#1976D2",
   "Carnivore: Omnivore"         = "#FFB300", "Herbivore: Nectarivore"       = "#66BB6A", "Omnivore: Omnivore"    = "#64B5F6",
   "Carnivore: Vertivore"        = "#FFE0B2",  "Herbivore: Omnivore"         = "#B9F6CA", "NA: NA"                = "darkgrey"
-)
+  )
 
 bird_fun_Groups_stack_TLN$Treat_type <- factor(bird_fun_Groups_stack_TLN$Treat_type, levels = c("Revegetated", "Remnant"))
 
@@ -1432,7 +1441,7 @@ Life_niche_colours <- c(
   "Insessorial: Nectarivore" = "#8E24AA", "Aerial: Invertivore"      = "#1976D2", "Terrestrial: Invertivore"      = "#FFB300", "Generalist: Vertivore"   = "#EF9A9A",
   "Insessorial: Omnivore"    = "#CE93D8", "Aerial: Omnivore"         = "#64B5F6", "Terrestrial: Omnivore"         = "#FFE0B2",  
   "Insessorial: Vertivore"   = "#F3E5F5", "NA: NA" = "darkgrey"
-)
+  )
 
 bird_fun_Groups_stack_LifeNiche$Treat_type <- factor(bird_fun_Groups_stack_LifeNiche$Treat_type, levels = c("Revegetated", "Remnant"))
 
@@ -1534,32 +1543,32 @@ unique(bird_fun_Groups_stack_LifeNicheREV$Trophic.Lifestyle_NicheREV)
 NICHE_LIFE_colours <- c(
   "Aquatic predator: Aerial"      = "#DAA520",
   "Aquatic predator: Aquatic"     = "#FFDB58",
-  "Aquatic predator: Terrestrial"= "#FFB300",
-  
-  "Granivore: Insessorial"       = "#1B5E20",
-  "Granivore: Terrestrial"       = "#66BB6A",
-  
-  "Herbivore aquatic: Aquatic"   = "#FFE0B2",
-  
-  "Invertivore: Aerial"          = "#3E2723",
-  "Invertivore: Generalist"      = "#6D4C41",
-  "Invertivore: Insessorial"     = "#A1887F",
-  "Invertivore: Terrestrial"     = "#D7CCC8",
-  
-  "Nectarivore: Insessorial"     = "#FF6F61",
-  
-  "Omnivore: Aerial"             = "#E3F2FD",
-  "Omnivore: Generalist"         = "#0D47A1",
-  "Omnivore: Insessorial"        = "#1976D2",
-  "Omnivore: Terrestrial"        = "#64B5F6",
-  
-  "Vertivore: Generalist"        = "#BF360C",
-  "Vertivore: Insessorial"       = "#EF6C00",
-  
-  "Vertivore: Aerial"            = "#4B0082",
-  
-  "NA: NA"                       = "darkgrey"
-)
+   "Aquatic predator: Terrestrial"= "#FFB300",
+   
+   "Granivore: Insessorial"       = "#1B5E20",
+   "Granivore: Terrestrial"       = "#66BB6A",
+   
+   "Herbivore aquatic: Aquatic"   = "#FFE0B2",
+   
+   "Invertivore: Aerial"          = "#3E2723",
+   "Invertivore: Generalist"      = "#6D4C41",
+   "Invertivore: Insessorial"     = "#A1887F",
+   "Invertivore: Terrestrial"     = "#D7CCC8",
+   
+   "Nectarivore: Insessorial"     = "#FF6F61",
+   
+   "Omnivore: Aerial"             = "#E3F2FD",
+   "Omnivore: Generalist"         = "#0D47A1",
+   "Omnivore: Insessorial"        = "#1976D2",
+   "Omnivore: Terrestrial"        = "#64B5F6",
+   
+   "Vertivore: Generalist"        = "#BF360C",
+   "Vertivore: Insessorial"       = "#EF6C00",
+   
+   "Vertivore: Aerial"            = "#4B0082",
+   
+   "NA: NA"                       = "darkgrey"
+   )
 
 bird_fun_Groups_stack_LifeNicheREV$Treat_type <- factor(bird_fun_Groups_stack_LifeNicheREV$Treat_type, levels = c("Revegetated", "Remnant"))
 
@@ -1635,7 +1644,7 @@ ggpubr::ggarrange(ggplot(bird_fun_Groups_stack_Lifestyle, aes(x = Treat_type, y 
                   , align = "hv")
 # ggsave(filename = "Bird-Stack-FUNCTIONS-all-two_stackploats-SurveyYear_RemRev.pdf", path = outdir, width = 13, height = 6)
 
-### stats ----------------------------------------------------------------------
+ ### stats ----------------------------------------------------------------------
 bird_functional_CLLMM_Fixed_MODEL <- bird_functional_CLLMM_Fixed_prop
 bird_functional_CLLMM_Fixed_MODEL$Survey_Year <- as.factor(bird_functional_CLLMM_Fixed_MODEL$Survey_Year)
 # bird_functional_CLLMM_Fixed_MODEL$count <- 1
@@ -1649,7 +1658,7 @@ summary(model_aquatic)
 # Survey_Year2025        0.16063    0.22209   0.723    0.470
 
 model_aquatic_sy <- glmer(FunG_count ~ Treat_type + (1|Survey_Year) + (1|Site_ID_Var), family = poisson(), 
-                          data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Aquatic predator",])
+                       data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Aquatic predator",])
 summary(model_aquatic_sy) # not sig
 
 model_graniv <- glmer(FunG_count ~ Treat_type + Survey_Year + (1|Site_ID_Var), family = poisson(), 
@@ -1661,7 +1670,7 @@ summary(model_graniv)
 # Survey_Year2025         0.0156     0.1187   0.131    0.895    
 
 model_graniv_sy <- glmer(FunG_count ~ Treat_type + (1|Survey_Year) + (1|Site_ID_Var), family = poisson(), 
-                         data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Granivore",])
+                      data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Granivore",])
 summary(model_graniv_sy) # not sig
 
 model_invert <- glmer(FunG_count ~ Treat_type * Survey_Year + (1|Site_ID_Var), family = poisson(), 
@@ -1682,7 +1691,7 @@ summary(model_nect)
 # Survey_Year2025        0.07714    0.18040   0.428   0.6690  
 
 model_nect_sy <- glmer(FunG_count ~ Treat_type + (1|Survey_Year) + (1|Site_ID_Var), family = poisson(), 
-                       data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Nectarivore",])
+                    data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Nectarivore",])
 summary(model_nect_sy) # not sig
 
 model_omni <- glmer(FunG_count ~ Treat_type + Survey_Year + (1|Site_ID_Var), family = poisson(), 
@@ -1702,7 +1711,7 @@ summary(model_vert)
 # Survey_Year2025       -0.04096    0.73603  -0.056    0.956
 
 model_vert_sy <- glmer(FunG_count ~ Treat_type + (1|Survey_Year) + (1|Site_ID_Var), family = poisson(), 
-                       data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Vertivore",])
+                    data = bird_functional_CLLMM_Fixed_MODEL[bird_functional_CLLMM_Fixed_MODEL$Trophic.Niche == "Vertivore",])
 summary(model_vert_sy) # not sig
 
 
@@ -1719,8 +1728,8 @@ wide_bird_data_site_save <- wide_bird_data_site
 wide_bird_data_site_save$sample_id_new <- rownames(wide_bird_data_site_save)
 
 wide_bird_data_site_save$sample_id_new <- str_replace(wide_bird_data_site_save$sample_id_new,
-                                                      "^(\\d{4})_([^_]+)_.*$",
-                                                      "\\2_\\1"
+  "^(\\d{4})_([^_]+)_.*$",
+  "\\2_\\1"
 )
 rownames(wide_bird_data_site_save) <- wide_bird_data_site_save$sample_id_new
 wide_bird_data_site_save <- wide_bird_data_site_save %>%
@@ -1732,7 +1741,7 @@ wide_bird_data_site_save <- wide_bird_data_site_save %>%
 # colnames(bird_functional)
 # read_excel("AVONET1_Birdlife.xlsx")
 
-bird_functional_ABD <- read.csv(file = "/PATH/TO/DATA/Bird database stuff/Garnet_2015_Sdata/Australian_Bird_Data_Version_1.csv")
+bird_functional_ABD <- read.csv(file = "/PATH/TO/DATA/data_2025/Bird database stuff/Garnet_2015_Sdata/Australian_Bird_Data_Version_1.csv")
 
 # bird_functional_ABD_FOOD <- bird_functional_ABD %>% 
 #   select(matches("X4_"), matches("X5_"), matches("X6_"), matches("X3_"), matches("_Food_"))
@@ -1741,7 +1750,7 @@ bird_functional_ABD_NEST <- bird_functional_ABD %>%
   select(matches("X4_"), matches("X5_"), matches("X6_"), matches("X3_"), matches("X29_"), matches("X71_"), matches("_Nest_location_"))
 
 # bird_functional_ABD_POPDESC <- bird_functional_ABD %>% 
-# select(matches("X4_"), matches("X5_"), matches("X6_"), matches("X3_"), matches("X29_Population_description_4"))
+  # select(matches("X4_"), matches("X5_"), matches("X6_"), matches("X3_"), matches("X29_Population_description_4"))
 
 ### ABD Nesting --------------------------------------------------------------------
 bird_nest_long <- bird_functional_ABD_NEST %>%
@@ -1983,10 +1992,10 @@ new_order_table <- data.frame(
   Order2 = c("Passeriformes",   "Psittaciformes" , "Columbiformes", "Pelecaniformes",
              "Charadriiformes",  "Accipitriformes","Other orders",  "Other orders", 
              "Other orders",     "Other orders",   "Other orders",  "Other orders")
-)
+  )
 
 bird_wide_rel_alluvial5 <- left_join(bird_wide_rel_alluvial4, new_order_table, 
-                                     by = "Order1")
+                                            by = "Order1")
 # need to do "minor orders" columns
 bird_wide_rel_alluvial5$count <- 1
 
@@ -2052,11 +2061,13 @@ bird_alluvial_counts_visit2 <- bird_alluvial_counts_visit %>%
            Primary.Lifestyle, Trophic.Niche, Nest_Level, Population_description,)%>%
   reframe(meancounts= mean(count),
           prop = mean(count)/sum(count))
-
+  
 bird_alluvial_counts_visit2 %>%
   group_by(Survey_Year, Treat_type, Order2, Primary.Lifestyle, 
            Trophic.Niche, Nest_Level, Population_description,)%>%
   reframe(total = sum(prop)) %>% View()
+  
+
 
 group_by(Survey_Year, Treat_type,
          Order2,
@@ -2094,7 +2105,9 @@ plot(NMDS_Jacc)
 sp_fit <- envfit(NMDS_Jacc, wide_bird_data_site, permutations = 999)
 plot(sp_fit, p.max = 0.05, col = "red")
 # sp_fit
-
+library(dplyr)
+library(tidyr)
+library(tibble)
 # Niche groups
 guild_membership_matrix <- bird_wide_rel_alluvial5 %>%
   distinct(tSpp, Trophic.Niche) %>%   # safety
@@ -2292,22 +2305,26 @@ PD_fit_values$Sign <-  ifelse(PD_fit$vectors$pvals <0.05, 1, 0)
 # Replot earlier NMDSs
 ggplot()+
   # Tropic niche vectors
-  geom_segment(data = TN_fit_values[TN_fit_values$Sign==1,],colour = "red", aes(xend = NMDS1, yend=NMDS2, x=0, y=0))+
+  geom_segment(data = TN_fit_values[TN_fit_values$Sign==1,],colour = "red", alpha = 0.5, aes(xend = NMDS1, yend=NMDS2, x=0, y=0))+
   geom_text(data = TN_fit_values[TN_fit_values$Sign==1,], colour = "red", aes(x = NMDS1, y=NMDS2, label=Tropic.Niche))+
   # Primary Lifestyle vectors
-  geom_segment(data = PS_fit_values[PS_fit_values$Sign==1,], colour = "blue", aes(xend = NMDS1, yend=NMDS2, x=0, y=0))+
+  geom_segment(data = PS_fit_values[PS_fit_values$Sign==1,], colour = "blue", alpha = 0.5, aes(xend = NMDS1, yend=NMDS2, x=0, y=0))+
   geom_text(data = PS_fit_values[PS_fit_values$Sign==1,], colour = "blue", aes(x = NMDS1, y=NMDS2, label=Primary.Lifestyle))+
   # Nest Location vectors
-  geom_segment(data = NL_fit_values[NL_fit_values$Sign==1,], colour = "green", aes(xend = NMDS1, yend=NMDS2, x=0, y=0))+
-  geom_text(data = NL_fit_values[NL_fit_values$Sign==1,], colour = "darkgreen", aes(x = NMDS1, y=NMDS2, label=Nest_Level))+
+  # geom_segment(data = NL_fit_values[NL_fit_values$Sign==1,], colour = "green", aes(xend = NMDS1, yend=NMDS2, x=0, y=0))+
+  # geom_text(data = NL_fit_values[NL_fit_values$Sign==1,], colour = "darkgreen", aes(x = NMDS1, y=NMDS2, label=Nest_Level))+
   # Population Description
-  geom_segment(data = PD_fit_values[PD_fit_values$Sign==1,], colour = "orange", aes(xend = NMDS1, yend=NMDS2, x=0, y=0))+
-  geom_text(data = PD_fit_values[PD_fit_values$Sign==1,], colour = "darkorange", aes(x = NMDS1, y=NMDS2, label=Pop_Status))+
+  # geom_segment(data = PD_fit_values[PD_fit_values$Sign==1,], colour = "orange", aes(xend = NMDS1, yend=NMDS2, x=0, y=0))+
+  # geom_text(data = PD_fit_values[PD_fit_values$Sign==1,], colour = "darkorange", aes(x = NMDS1, y=NMDS2, label=Pop_Status))+
   # points
-  geom_point(data = bird_metadata_s_Jacc, size= 2, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =Treat_type, hjust=1, vjust=1))+
+  geom_point(data = bird_metadata_s_Jacc, colour ="black", size= 1.5, aes(x = MDS1, y = MDS2, shape = Survey_Year))+
+  geom_point(data = bird_metadata_s_Jacc, colour ="black", size= 2.5, aes(x = MDS1, y = MDS2, shape = Survey_Year))+
+  geom_point(data = bird_metadata_s_Jacc, size= 2, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =Treat_type))+
+  scale_colour_manual(values = c("Revegetated" =  "#D07C2C", "Remnant" = "#1F5D50"))+
   scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
   theme_test()+
   labs(x= "NMDS1", y="NMDS2")
+# ggsave(filename = "presentation-bird-ordination.pdf", path = outdir, width = 7, height = 6)
 
 TN_NMDS <- ggplot()+
   # Tropic niche vectors
@@ -2426,7 +2443,7 @@ bird_trophic_summary2 <- bird_food_long3 %>%
     
     All_Trophic_Niches = list(unique(Trophic_Niche)),
     n_Trophic_niches = n_distinct(Trophic_Niche)
-  )
+    )
 
 bird_trophic_summary2$Trophic_niches_Weighting <- 1/bird_trophic_summary2$n_Trophic_niches
 bird_trophic_summary2$Species <- paste0(bird_trophic_summary2$X4_Genus_name_2, " ", bird_trophic_summary2$X5_Species_name_2)
