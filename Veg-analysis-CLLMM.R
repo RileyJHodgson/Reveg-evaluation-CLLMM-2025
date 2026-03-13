@@ -17,7 +17,8 @@ outdir <- "/PATH/TO/DATA/data_2025/R_output_veg_updated"
 outdir <- file.path(outdir)
 
 # Read data
-# metadata_s <- read_excel("Goyder-veg_analysis-metadata.xlsx", sheet = "Site level")
+metadata_soil <- read_excel("Goyder-soil_analysis-metadata.xlsx", sheet = "site-info")
+metadata_s <- read_excel("Goyder-veg_analysis-metadata.xlsx", sheet = "Site level")
 metadata_v <- read_excel("Goyder-veg_analysis-metadata.xlsx", sheet = "Visit level")
 all_veg_data <- read_excel("Joint_Vegetation_data_210126.xlsx", sheet= "Final_Data")
 colnames(metadata_v)
@@ -115,6 +116,16 @@ grazing_info_only_tab$grazing_level <- ifelse(is.na(grazing_info_only_tab$grazin
 table(grazing_info_only_tab$grazing_level)
 table(grazing_info_only$grazing_level)
 
+# Summary info 
+length(unique(all_veg_data$ogr_WptID))  # 76
+length(unique(all_veg_data$ogr_VisitI)) # 684
+length(unique(all_veg_data$`SCIENTIFIC NAME`)) # 686
+nrow(all_veg_data) # 230796
+
+all_veg_data %>% 
+  select(WptID, Management) %>% 
+  distinct() %>% 
+  count(Management, name = "n_sites")
 
 # Alpha Diversity --------------------------------------------------------------
 library(vegan)
@@ -266,26 +277,43 @@ all_alpha_plot_EFS <- ggplot(diversity_data3, aes(x= RemRev, y= mean_EffSpp))+
 
 all_alpha_plots_HILG <- ggpubr::ggarrange(all_alpha_plot_Rich, all_alpha_plot_Inv, all_alpha_plot_sha, all_alpha_plot_EFS, common.legend = TRUE, align = "hv")
 
+all_alpha_plot_EFS <- ggplot(diversity_data3, aes(x= RemRev, y= mean_EffSpp))+
+  geom_violin(aes(fill = RemRev), alpha = 0.75)+ 
+  geom_boxplot(outlier.shape = NA, width = 0.1)+
+  geom_jitter(height = 0, width = 0.1, alpha = 0.5) + 
+  facet_grid(~Survey_Year, scales = "free_x", space = "free_x")+
+  scale_fill_manual(values = c("Degraded" = "darkgrey", "Remnant" = "darkgreen", "Revegetation" = "orange"))+ 
+  theme_test()+ 
+  theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  labs(y= "Effective number of species", x = "", fill = "Treatment")
+all_alpha_plot_EFS
+
 ## Alpha diversity stats ------------------------------------------------------
 library(lme4)
-getwd() # "PATH/TO/DATA/data_2025"
+getwd()
 source("Permute-LMEM-Toolkit.R")
 
 # LMEM effective no species by treatment and sample year
 LMEM_eff_RRSY_int <- LMEM_permute_anova( data = diversity_data2,
                                          response = "EffSpp", fixed_effects = c("RemRev", "Survey_Year", "RemRev:Survey_Year"),
-                                         random_effects = c("WptID", "tEcoName"),
+                                         random_effects = c("WptID"),
                                          nreps = 999)
 
 LMEM_eff_RRSY_int$formula
-# EffSpp ~ RemRev + Survey_Year + RemRev:Survey_Year + (1 | WptID) + (1 | tEcoName)
+# EffSpp ~ RemRev + Survey_Year + RemRev:Survey_Year + (1 | WptID)
+
+library(performance)
+LMEM_eff_RRSY_int$model
+r2(LMEM_eff_RRSY_int$model)
 
 LMEM_eff_RRSY_int$Anova
 # Fixed effects:
 #                      Chisq Df Pr(>Chisq)    
-# RemRev             116.953  1  < 2.2e-16 ***
+# RemRev             116.954  1  < 2.2e-16 ***
 # Survey_Year         14.711  1  0.0001253 ***
 # RemRev:Survey_Year  22.725  1  1.869e-06 ***
+
+LMEM_eff_RRSY_int$model
 
 LMEM_eff_RRSY_int$permutation_p_values
 # RemRev        Survey_Year RemRev:Survey_Year 
@@ -386,11 +414,13 @@ Native_diversity_data3 <- Native_diversity_data2 %>%
 ggplot(Native_diversity_data3, aes(x= RemRev, y= mean_EffSpp))+
   geom_violin(aes(fill = RemRev))+
   geom_boxplot(outlier.shape = NA, width = 0.1)+
-  geom_jitter(height = 0, width = 0.2, alpha = 1, aes(colour = HILG)) +
+  geom_jitter(height = 0, width = 0.2, alpha = 0.5) +
   facet_grid(.~Survey_Year, scales = "free_x", space = "free_x")+
-  scale_fill_manual(values = remrev_cols)+
-  theme_test()
-# ggsave(filename = "Veg-EffectiveSpecies-PlantYear-NATIVEONLY-survey_year.pdf", path = outdir, width = 7, height = 4)
+  # scale_fill_manual(values = c("Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  scale_fill_manual(values = c("Degraded" = "#DDA0DD", "Remnant" = "darkgreen", "Revegetation" = "royalblue"))+
+  theme_test()+theme(legend.position ="bottom")
+# ggsave(filename = "Veg-EffectiveSpecies-PlantYear-NATIVEONLY-survey_year.pdf", path = outdir, width = 7, height = 5)
+
 
 ggplot(Native_diversity_data3, aes(x= tEcoName, y= mean_EffSpp))+
   geom_violin(aes(fill = tEcoName))+
@@ -447,11 +477,17 @@ ggplot(Native_diversity_data3, aes(x= tEcoName, y= mean_EffSpp))+
 # stats
 model1_native <- LMEM_permute_anova(data = Native_diversity_data2,
                                     response = "EffSpp", fixed_effects = c("RemRev", "Survey_Year", "RemRev:Survey_Year"),
-                                    random_effects = c("WptID", "tEcoName"),
+                                    random_effects = c("WptID"),
                                     nreps = 999)
 
 model1_native$formula
-# EffSpp ~ RemRev + Survey_Year + RemRev:Survey_Year + (1 | WptID) + (1 | tEcoName)
+# EffSpp ~ RemRev + Survey_Year + RemRev:Survey_Year + (1 | WptID)
+
+model1_native$model
+r2(model1_native$model)
+# # R2 for Mixed Models
+#   Conditional R2: 0.542
+#      Marginal R2: 0.330
 
 model1_native$Anova
 #                     Chisq Df Pr(>Chisq)    
@@ -606,10 +642,16 @@ ggplot(Invasive_diversity_data3, aes(x= tEcoName, y= mean_EffSpp))+
 # stats
 model1_invasive <- LMEM_permute_anova(data = Invasive_diversity_data2,
                                       response = "EffSpp", fixed_effects = c("RemRev", "Survey_Year", "RemRev:Survey_Year"),
-                                      random_effects = c("WptID", "tEcoName"),
+                                      random_effects = c("WptID"),
                                       nreps = 999)
 model1_invasive$formula
 # EffSpp ~ RemRev + Survey_Year + RemRev:Survey_Year + (1 | WptID) + (1 | tEcoName)
+
+model1_invasive$model
+r2(model1_invasive$model)
+# # R2 for Mixed Models
+#   Conditional R2: 0.336
+#      Marginal R2: 0.088
 
 model1_invasive$Anova
 #                      Chisq Df Pr(>Chisq)    
@@ -638,8 +680,46 @@ model2_invasive$permutation_p_values
 #  tEcoName          Survey_Year tEcoName:Survey_Year 
 # 0.8188188            0.0000000            0.0000000 
 
+# Figure plot
+all_alpha_plot_EFS <- ggplot(diversity_data3, aes(x= RemRev, y= mean_EffSpp))+
+  geom_violin(aes(fill = RemRev), alpha = 0.75)+ 
+  geom_boxplot(outlier.shape = NA, width = 0.1)+
+  geom_jitter(height = 0, width = 0.1, alpha = 0.33) + 
+  facet_grid(~Survey_Year, scales = "free_x", space = "free_x")+
+  scale_fill_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  theme_test()+ 
+  theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  labs(y= "Effective number of species", x = "", fill = "Treatment")
+all_alpha_plot_EFS
+
+all_alpha_plot_EFS_native <- ggplot(Native_diversity_data3, aes(x= RemRev, y= mean_EffSpp))+
+  geom_violin(aes(fill = RemRev), alpha = 0.75)+ 
+  geom_boxplot(outlier.shape = NA, width = 0.1)+
+  geom_jitter(height = 0, width = 0.1, alpha = 0.33) + 
+  facet_grid(~Survey_Year, scales = "free_x", space = "free_x")+
+  scale_fill_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  theme_test()+ 
+  theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  labs(y= "Effective number of native species", x = "", fill = "Treatment")
+all_alpha_plot_EFS_native
+
+all_alpha_plot_EFS_nonnative <- ggplot(Invasive_diversity_data3, aes(x= RemRev, y= mean_EffSpp))+
+  geom_violin(aes(fill = RemRev), alpha = 0.75)+ 
+  geom_boxplot(outlier.shape = NA, width = 0.1)+
+  geom_jitter(height = 0, width = 0.1, alpha = 0.33) + 
+  facet_grid(~Survey_Year, scales = "free_x", space = "free_x")+
+  scale_fill_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  theme_test()+ 
+  theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  labs(y= "Effective number of non-native species", x = "", fill = "Treatment")
+all_alpha_plot_EFS_nonnative
+
+ggpubr::ggarrange(all_alpha_plot_EFS, all_alpha_plot_EFS_native, all_alpha_plot_EFS_nonnative, 
+                  common.legend = TRUE, ncol=1, legend = "bottom", labels = c("A", "B", "C"),
+                  align = "hv")
+# ggsave(filename = "Veg-EffectiveSpecies-combined.pdf", path = outdir, width = 5, height = 12)
+
 # Stacked bar plots ------------------------------------------------------------
-# Stacked bar plots to visualise vegetation community differences
 all_veg_data_v_dataonly <- all_veg_data_v %>% 
   select(VisitID, Survey_Year, iPlantYear, Treatment, NSXCODE, tLF, INTRODUCED, tEcoName, `SCIENTIFIC NAME`, WptID, VisitID)
 
@@ -919,7 +999,7 @@ veg_logratio_av <- veg_data_long_LF4_RevRem %>%
     by = c("Survey_year", "Ecosystem", "Native_Invasive_LFs")) %>%
   mutate(log_ratio_change = log((Average_cover + 1) / (Remnant_cover + 1)))
 
-unique(veg_logratio_plot$RevRem.x)
+# unique(veg_logratio_plot$RevRem.x)
 ggplot(veg_logratio_av, aes(x = Survey_year, y = Native_Invasive_LFs, fill = log_ratio_change)) +
   geom_tile(colour = "black") +
   facet_grid( ~ Ecosystem, scales="free_x") +
@@ -1637,7 +1717,7 @@ ggplot(metadata_s[metadata_s$RemRev == "Revegetation" & metadata_s$Survey_Year =
   # scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
   scale_colour_manual(values =  c("High" = "#d73027", "Moderate" = "#ffffbf", "Low" = "#4575b4", "Not observed" = "lightgrey"))+
   theme_test()
-ggsave(filename = "NMDS-reveg_only-grazing intensity.pdf", path = outdir)
+# ggsave(filename = "NMDS-reveg_only-grazing intensity.pdf", path = outdir)
 
 # Remnant reveg survey year 
 unique(hulls_RemRev$hull_combs)
@@ -1656,8 +1736,8 @@ ggplot(metadata_s, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =hull_com
 
 ggplot(metadata_s, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =RemRev))+
   geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
-  scale_colour_manual(values =  c("Remnant" = "#006d2c", "Revegetation" = "#cc4c02"))+
-  scale_fill_manual(values =  c("Remnant" = "#006d2c", "Revegetation" = "#cc4c02"))+
+  scale_colour_manual(values =  c("Remnant" = "darkgreen", "Revegetation" = "orange"))+
+  scale_fill_manual(values =  c("Remnant" = "darkgreen", "Revegetation" = "orange"))+
   geom_point(size= 2.5, colour = "black")+
   geom_point(size= 3.5, colour = "black")+
   geom_point(size= 3)+
@@ -1668,17 +1748,17 @@ ggplot(metadata_s, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =RemRev))
 
 # reattach ecosystem names
 metadata_s <- left_join(metadata_s, ilumpDF, by = "iLumpEco")
-colnames(metadata_s)
-ggplot(metadata_s, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =tEcoName))+
-  geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
-  geom_point(size= 2.5, colour = "black")+
-  geom_point(size= 3.5, colour = "black")+
-  scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
-  scale_colour_brewer(palette = "Set1")+
-  scale_fill_brewer(palette = "Set1")+
-  labs(x = "NMDS1", y = "NMDS2")+
-  geom_point(size= 3)+
-  theme_test()
+# colnames(metadata_s)
+# ggplot(metadata_s, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =tEcoName))+
+#   geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
+#   geom_point(size= 2.5, colour = "black")+
+#   geom_point(size= 3.5, colour = "black")+
+#   scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
+#   scale_colour_brewer(palette = "Set1")+
+#   scale_fill_brewer(palette = "Set1")+
+#   labs(x = "NMDS1", y = "NMDS2")+
+#   geom_point(size= 3)+
+#   theme_test()
 # ggsave(filename = "Veg-BETA-NMDS-SurveyYear_Ecosystem-connected.pdf", path = outdir, width = 7, height = 6)
 
 # unique(hulls_iLumpEco$hull_lumps)
@@ -1742,11 +1822,12 @@ metadata_s_Jacc$RemRev <- ifelse(metadata_s_Jacc$iPlantYear == "Remnant", "Remna
 
 ggplot(metadata_s_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =RemRev))+
   geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
-  scale_colour_manual(values =  c("Remnant" = "#006d2c", "Revegetation" = "#cc4c02"))+
-  scale_fill_manual(values =  c("Remnant" = "#006d2c", "Revegetation" = "#cc4c02"))+
+  scale_colour_manual(values = c("Remnant" = "darkgreen", "Revegetation" = "orange"))+ 
+  # scale_colour_manual(values =  c("Remnant" = "#006d2c", "Revegetation" = "#cc4c02"))+
   geom_point(size= 2.5, colour = "black")+
   geom_point(size= 3.5, colour = "black")+
   geom_point(size= 3)+
+  labs(shape = "Survey year", colour = "Treatment")+
   scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
   theme_test()
 # ggsave(filename = "Veg-BETA-NMDS-Jaccard-SurveyYear_RemRev-connected.pdf", path = outdir, width = 7, height = 6)
@@ -1771,7 +1852,168 @@ ggplot(metadata_s_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =tEc
   theme_test()
 # ggsave(filename = "Veg-BETA-NMDS-Jaccard-SurveyYear_Ecosystem-Connected.pdf", path = outdir, width = 7, height = 6)
 
-# stats
+## ENVFIT variables --------
+# Load variables and format to match 2025 veg data
+all_variables <- read.csv(file = "all_variables.csv")
+all_variables <- all_variables %>% select(-X)
+all_variables$Site_ID <- str_remove(all_variables$Site_ID, "P$")
+all_variables$Site_ID <- paste0(all_variables$Site_ID, "_2025")
+rownames(all_variables) <- all_variables$Site_ID
+envit_sites <- all_variables$Site_ID
+
+# filter out non 2025 samples from community table
+envfit_commtab <- veg_species_wide_beta
+envfit_commtab$Site_ID <- rownames(envfit_commtab)
+envfit_commtab2 <- subset(envfit_commtab, Site_ID %in% envit_sites)
+envfit_commtab2 <- envfit_commtab2 %>% select(-Site_ID)
+envfit_commtab2 <- envfit_commtab2[rowSums(envfit_commtab2) > 0, ]
+dim(envfit_commtab2)
+
+# select variables of interest
+colnames(all_variables)
+all_variables2 <- all_variables %>% select(
+  Ammonium.Nitrogen, Nitrate.Nitrogen, 
+  Phosphorus.Colwell, Potassium.Colwell,    Sulfur          ,      
+  Organic.Carbon, Conductivity, pH.Level..CaCl2. ,     
+  pH.Level..H2O., DTPA.Copper, DTPA.Iron        ,     
+  DTPA.Manganese, DTPA.Zinc, Exc..Aluminium   ,     
+  Exc..Calcium, Exc..Magnesium, Exc..Potassium   ,     
+  Exc..Sodium, Boron.Hot.CaCl2,
+  grav_water_content_g_g, MaxAAnBase, RaiAAnBase, D35AAnBase)
+
+all_variables2 <- na.omit(all_variables2)
+rownames(all_variables2)
+envfit_commtab3 <- envfit_commtab2[rownames(envfit_commtab2) %in% rownames(all_variables2), ]
+
+set.seed(123)
+NMDS_bray_2025 <- metaMDS(envfit_commtab3, distance = "bray")
+NMDS_bray_2025$stress # 0.1410454
+plot(NMDS_bray_2025)
+
+data_fit <- envfit(NMDS_bray_2025, all_variables2, perm = 999)
+plot(data_fit, p.max = 0.05, col = "blue")
+
+NMDS_2025_fit <- as.data.frame(scores(NMDS_bray_2025, "sites"))
+NMDS_2025_fit$Site_ID <- rownames(NMDS_2025_fit)
+NMDS_2025_fit <- left_join(NMDS_2025_fit, all_variables, by = "Site_ID")
+
+colnames(ilumpDF) <- c("iEcosystem", "combined_ecoName", "combined_ecoDesc")
+NMDS_2025_fit <- left_join(NMDS_2025_fit, ilumpDF, by = "iEcosystem")
+
+fit_sites <- as.data.frame(scores(data_fit, display = "vectors"))
+fit_sites$r2   <- data_fit$vectors$r
+fit_sites$pval <- data_fit$vectors$pvals
+fit_sites$Name <- rownames(fit_sites)
+data_fit$vectors
+#                           NMDS1    NMDS2     r2 Pr(>r)    
+# Ammonium.Nitrogen      -0.92586 -0.37786 0.0527  0.315    
+# Nitrate.Nitrogen       -0.25606 -0.96666 0.2569  0.004 ** 
+# Phosphorus.Colwell     -0.69601 -0.71803 0.4518  0.001 ***
+# Potassium.Colwell      -0.36457 -0.93118 0.5402  0.001 ***
+# Sulfur                 -0.92410 -0.38215 0.0685  0.253    
+# Organic.Carbon         -0.18163 -0.98337 0.3897  0.001 ***
+# Conductivity           -0.63307 -0.77409 0.1966  0.014 *  
+# pH.Level..CaCl2.       -0.71773  0.69632 0.0644  0.260    
+# pH.Level..H2O.         -0.84308  0.53779 0.0500  0.362    
+# DTPA.Copper            -0.40694 -0.91346 0.4474  0.001 ***
+# DTPA.Iron              -0.00327 -0.99999 0.3090  0.001 ***
+# DTPA.Manganese         -0.43619 -0.89986 0.3534  0.001 ***
+# DTPA.Zinc              -0.82677 -0.56255 0.1908  0.019 *  
+# Exc..Aluminium          0.90852 -0.41785 0.0146  0.735    
+# Exc..Calcium           -0.52704 -0.84984 0.1720  0.021 *  
+# Exc..Magnesium         -0.35602 -0.93448 0.5253  0.001 ***
+# Exc..Potassium         -0.37885 -0.92546 0.5263  0.001 ***
+# Exc..Sodium            -0.47913 -0.87774 0.3342  0.001 ***
+# Boron.Hot.CaCl2        -0.44722 -0.89442 0.4896  0.001 ***
+# grav_water_content_g_g -0.12000 -0.99277 0.2939  0.003 ** 
+# MaxAAnBase             -0.05446  0.99852 0.5317  0.001 ***
+# RaiAAnBase              0.84552 -0.53395 0.0185  0.658    
+# D35AAnBase             -0.09698  0.99529 0.2777  0.004 ** 
+
+ggplot()+
+  geom_point(data = NMDS_2025_fit, aes(x = NMDS1, y = NMDS2, shape = Treatment), size = 4.5)+
+  geom_point(data = NMDS_2025_fit, aes(x = NMDS1, y = NMDS2, colour = combined_ecoName, shape = Treatment), size = 3.5)+
+  geom_segment(data = fit_sites[fit_sites$pval < 0.03 & fit_sites$r2 >0.4,], aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2),  colour = "blue", arrow = arrow(length = unit(0.25, "cm")))+
+  geom_text(data = fit_sites[fit_sites$pval < 0.03 & fit_sites$r2 >0.4,], aes(x = NMDS1*1.1, y = NMDS2*1.1, label = Name), colour = "blue") +
+  scale_colour_brewer(palette = "Set1")+
+  labs(title = paste0("Stress: ", round(NMDS_bray_2025$stress, 4)),
+       colour = "Vegetation community",
+       shape = "Treatment")+
+  coord_equal()+
+  lims(x = c(-1.3,1.55), y = c(-1.425,1.425))+
+  theme_test()
+# ggsave(filename = "NMDS-veg-soil_clim-vec_revised.pdf", path = outdir, width = 6, height = 5)
+
+
+#### 2025 sites reveg only ------
+NMDS_2025_fit_rev <- subset(NMDS_2025_fit, Treatment == "Revegetation")
+NMDS_2025_fit_rev_vec <- NMDS_2025_fit_rev$Site_ID
+
+envfit_commtab3_2025_reveg <- envfit_commtab3[rownames(envfit_commtab3) %in% NMDS_2025_fit_rev_vec,]
+dim(envfit_commtab3_2025_reveg)
+
+set.seed(123)
+NMDS_bray_2025_rev <- metaMDS(envfit_commtab3_2025_reveg, distance = "bray")
+NMDS_bray_2025_rev$stress # 0.2056664 
+plot(NMDS_bray_2025_rev)
+
+# variables of interest
+all_variables2_rev <- all_variables2[rownames(all_variables2) %in% NMDS_2025_fit_rev_vec,]
+rownames(all_variables2_rev)
+
+data_fit_rev <- envfit(NMDS_bray_2025_rev, all_variables2_rev, perm = 999)
+plot(data_fit_rev, p.max = 0.05, col = "blue")
+
+NMDS_2025_fit_rev <- as.data.frame(scores(NMDS_bray_2025_rev, "sites"))
+colnames(NMDS_2025_fit_rev) <- c("NMDS1_rev", "NMDS2_rev")
+NMDS_2025_fit_rev$Site_ID <- rownames(NMDS_2025_fit_rev)
+NMDS_2025_fit_rev <- left_join(NMDS_2025_fit_rev, NMDS_2025_fit, by = "Site_ID")
+NMDS_2025_fit_rev <- left_join(NMDS_2025_fit_rev, ilumpDF, by = "combined_ecoName")
+
+fit_sites_rev <- as.data.frame(scores(data_fit_rev, display = "vectors"))
+fit_sites_rev$r2   <- data_fit_rev$vectors$r
+fit_sites_rev$pval <- data_fit_rev$vectors$pvals
+fit_sites_rev$Name <- rownames(fit_sites_rev)
+data_fit_rev
+#                           NMDS1    NMDS2     r2 Pr(>r)    
+# Ammonium.Nitrogen       0.99467 -0.10314 0.0517  0.485    
+# Nitrate.Nitrogen        0.94529 -0.32623 0.2367  0.034 *  
+# Phosphorus.Colwell      0.95598 -0.29344 0.5338  0.001 ***
+# Potassium.Colwell       0.90076 -0.43431 0.6677  0.001 ***
+# Sulfur                  0.72200 -0.69189 0.0608  0.437    
+# Organic.Carbon          0.91738 -0.39800 0.5016  0.001 ***
+# Conductivity            0.77004 -0.63800 0.2259  0.030 *  
+# pH.Level..CaCl2.       -0.15257 -0.98829 0.5949  0.001 ***
+# pH.Level..H2O.         -0.08460 -0.99641 0.5250  0.001 ***
+# DTPA.Copper             0.99344  0.11437 0.5997  0.001 ***
+# DTPA.Iron               0.92815  0.37222 0.3138  0.008 ** 
+# DTPA.Manganese          0.99757  0.06972 0.5901  0.001 ***
+# DTPA.Zinc               0.92764  0.37347 0.1799  0.067 .  
+# Exc..Aluminium          0.05522  0.99847 0.1975  0.070 .  
+# Exc..Calcium            0.24361 -0.96987 0.5600  0.001 ***
+# Exc..Magnesium          0.96445 -0.26427 0.6125  0.001 ***
+# Exc..Potassium          0.90168 -0.43240 0.6713  0.001 ***
+# Exc..Sodium             0.96408 -0.26562 0.4280  0.003 ** 
+# Boron.Hot.CaCl2         0.76351 -0.64579 0.5738  0.001 ***
+# grav_water_content_g_g  0.88736 -0.46108 0.3952  0.002 ** 
+# MaxAAnBase             -0.99820 -0.05999 0.4513  0.001 ***
+# RaiAAnBase             -0.22153 -0.97515 0.1526  0.122    
+# D35AAnBase             -0.85628  0.51650 0.1654  0.099 .   
+
+# head(fit_sites_rev)
+ggplot()+
+  geom_point(data = NMDS_2025_fit_rev, aes(x = NMDS1_rev, y = NMDS2_rev), size = 4.5)+
+  geom_point(data = NMDS_2025_fit_rev, aes(x = NMDS1_rev, y = NMDS2_rev, colour = combined_ecoName), size = 3.5)+
+  geom_segment(data = fit_sites_rev[fit_sites_rev$pval < 0.05 & fit_sites_rev$r2 > 0.3,], aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), colour = "blue", arrow = arrow(length = unit(0.25, "cm")))+
+  geom_text(data = fit_sites_rev[fit_sites_rev$pval < 0.05 & fit_sites_rev$r2 > 0.3,], aes(x = NMDS1*1.1, y = NMDS2*1.1, label = Name), colour = "blue") +  
+  scale_colour_brewer(palette = "Set1")+
+  coord_fixed(ratio = 1)+
+  labs(colour = "Vegetation community", title = paste0("Stress: ", round(NMDS_bray_2025_rev$stress, 4)))+
+  lims(x = c(-0.75, 1.2), y = c(-1, 0.95))+
+  theme_test()
+# ggsave(filename = "NMDS-veg_reveg_only-soil_clim-vec-revised.pdf", path = outdir, height = 5, width = 6)
+
+### stats ------
 dist_mat_bray_all <- vegdist(veg_species_wide_beta, method = "bray")
 # labels(dist_mat_bray_all)
 # dist_mat_bray_all_revonly <- vegdist(veg_species_wide_beta[, method = "bray")
@@ -1785,26 +2027,22 @@ metadata_s$strata_ecosys_wpt <- interaction(
 )
 
 set.seed(123)
-adonis2(dist_mat_bray_all ~ Survey_Year * RemRev, data = metadata_s,
-        strata = metadata_s$strata_ecosys_wpt)
-# Permutation test for adonis under reduced model
-# Terms added sequentially (first to last)
-# Blocks:  strata 
-# Permutation: free
-# Number of permutations: 999
-# 
-# adonis2(formula = dist_mat_bray_all ~ Survey_Year * RemRev, data = metadata_s, strata = metadata_s$strata_ecosys_wpt)
-#                     Df SumOfSqs      R2       F Pr(>F)    
-# Survey_Year          1    1.789 0.03406 5.2741  0.001 ***
-# RemRev               1    0.785 0.01494 2.3138  0.003 ** 
-# Survey_Year:RemRev   1    0.771 0.01468 2.2736  0.022 *  
-# Residual           145   49.192 0.93632                  
-# Total              148   52.537 1.00000    
+adonis2(dist_mat_bray_all ~ Survey_Year * Treatment, data = metadata_s,
+        strata = metadata_s$strata_ecosys_wpt, by = "terms")
+
+#                        Df SumOfSqs      R2      F Pr(>F)    
+# Survey_Year             1    1.789 0.03406 5.2741  0.001 ***
+# Treatment               1    0.785 0.01494 2.3138  0.003 ** 
+# Survey_Year:Treatment   1    0.771 0.01468 2.2736  0.022 *  
+# Residual              145   49.192 0.93632                  
+# Total                 148   52.537 1.00000                  
+# ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 # Interactions are tricky for beta disperson
 metadata_s$Year_RemRev_interaction <- interaction(
   metadata_s$Survey_Year,
-  metadata_s$RemRev,
+  metadata_s$Treatment,
   drop = TRUE
 )
 
@@ -2018,11 +2256,12 @@ metadata_s_native$RemRev <- ifelse(metadata_s_native$iPlantYear == "Remnant", "R
 
 ggplot(metadata_s_native, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour = RemRev))+
   geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
-  scale_colour_manual(values =  c("Remnant" = "#006d2c", "Revegetation" = "#cc4c02"))+
-  scale_fill_manual(values =  c("Remnant" = "#006d2c", "Revegetation" = "#cc4c02"))+
+  scale_colour_manual(values = c("Remnant" = "darkgreen", "Revegetation" = "orange"))+ 
+  # scale_colour_manual(values =  c("Remnant" = "#006d2c", "Revegetation" = "#cc4c02"))+
   geom_point(size= 2.5, colour = "black")+
   geom_point(size= 3.5, colour = "black")+
   geom_point(size= 3)+  
+  labs(shape = "Survey year", colour = "Treatment")+
   scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
   theme_test()
 # ggsave(filename = "Veg-BETA-NMDS-Bray-SurveyYear_RemRev-NATIVEONLY-Connection.pdf", path = outdir, width = 7, height = 6)
@@ -2103,6 +2342,49 @@ ggplot(metadata_s_native_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colo
 # ggsave(filename = "Veg-BETA-NMDS-Jaccard-SurveyYear_Ecosystem-NATIVEONLY.pdf", path = outdir, width = 7, height = 6)
 
 
+### Native-stats ----------------
+dist_mat_bray_native <- vegdist(veg_native_wide_beta, method = "bray")
+# labels(dist_mat_bray_all)
+# dist_mat_bray_all_revonly <- vegdist(veg_species_wide_beta[, method = "bray")
+# labels(dist_mat_bray_all)
+
+# I need to control for two variables in my data: ecosystem type (tEcoName), and repeated sites (iWptID)
+metadata_s_native$strata_ecosys_wpt <- interaction(
+  metadata_s$Treatment,
+  metadata_s$WptID,
+  drop = TRUE
+)
+
+set.seed(123)
+adonis2(dist_mat_bray_native ~ Survey_Year * Treatment, data = metadata_s,
+        strata = metadata_s_native$strata_ecosys_wpt, by = "terms")
+
+#                        Df SumOfSqs      R2      F Pr(>F)    
+# Survey_Year             1    1.529 0.02640 4.0415  0.001 ***
+# Treatment               1    0.780 0.01347 2.0624  0.010 ** 
+# Survey_Year:Treatment   1    0.756 0.01305 1.9975  0.015 *  
+# Residual              145   54.846 0.94708                  
+# Total                 148   57.910 1.00000   
+# ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+# Interactions are tricky for beta disperson
+metadata_s_native$Year_RemRev_interaction <- interaction(
+  metadata_s_native$Survey_Year,
+  metadata_s_native$Treatment,
+  drop = TRUE
+)
+
+bd_int.Y_RR <- betadisper(dist_mat_bray_native, group = metadata_s_native$Year_RemRev_interaction)
+permutest(bd_int.Y_RR, permutations = 999)
+# Permutation test for homogeneity of multivariate dispersions
+# Permutation: free
+# Number of permutations: 999
+# Response: Distances
+#            Df  Sum Sq   Mean Sq      F N.Perm Pr(>F)
+# Groups      3 0.021359 0.0071198 4.6154    999  0.003 **
+# Residuals 145 0.223681 0.0015426      
+
 ## Beta diversity (Invasives only) -----------------------------------------------
 Invasive_veg_data <- subset(all_veg_data_v, INTRODUCED == "*")
 
@@ -2182,6 +2464,51 @@ ggplot(metadata_s_invasive, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour 
   theme_test()
 # ggsave(filename = "Veg-BETA-NMDS-Bray-SurveyYear_Ecosystem-INVASIVEONLY.pdf", path = outdir, width = 7, height = 6)
 
+
+### Non-Native-stats ----------------
+dist_mat_bray_nonnative <- vegdist(veg_invasive_wide_beta, method = "bray")
+# labels(dist_mat_bray_all)
+# dist_mat_bray_all_revonly <- vegdist(veg_species_wide_beta[, method = "bray")
+# labels(dist_mat_bray_all)
+
+# I need to control for two variables in my data: ecosystem type (tEcoName), and repeated sites (iWptID)
+metadata_s_invasive$strata_ecosys_wpt <- interaction(
+  metadata_s_invasive$Treatment,
+  metadata_s_invasive$WptID,
+  drop = TRUE
+)
+
+set.seed(123)
+adonis2(dist_mat_bray_nonnative ~ Survey_Year * Treatment, data = metadata_s_invasive,
+        strata = metadata_s_invasive$strata_ecosys_wpt, by = "terms")
+
+#                        Df SumOfSqs      R2      F Pr(>F)    
+# Survey_Year             1    2.241 0.04791 7.5952  0.001 ***
+# Treatment               1    0.851 0.01819 2.8844  0.001 ***
+# Survey_Year:Treatment   1    0.902 0.01929 3.0575  0.017 *  
+# Residual              145   42.784 0.91461                  
+# Total                 148   46.779 1.00000                  
+# ---
+# ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+# Interactions are tricky for beta disperson
+metadata_s_native$Year_RemRev_interaction <- interaction(
+  metadata_s_native$Survey_Year,
+  metadata_s_native$Treatment,
+  drop = TRUE
+)
+
+bd_int.Y_RR <- betadisper(dist_mat_bray_native, group = metadata_s_native$Year_RemRev_interaction)
+permutest(bd_int.Y_RR, permutations = 999)
+# Permutation test for homogeneity of multivariate dispersions
+# Permutation: free
+# Number of permutations: 999
+# Response: Distances
+#            Df  Sum Sq   Mean Sq      F N.Perm Pr(>F)
+# Groups      3 0.021359 0.0071198 4.6154    999  0.003 **
+# Residuals 145 0.223681 0.0015426      
+
 # Jaccard
 veg_invasive_PA <- ifelse(veg_invasive_wide_beta == 0, 0, 1) 
 
@@ -2237,7 +2564,91 @@ ggplot(metadata_s_invasive_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, co
 # ggsave(filename = "Veg-BETA-NMDS-Jaccard-SurveyYear_Ecosystem-INVASIVEONLY.pdf", path = outdir, width = 7, height = 6)
 
 
-# Percentage exotic plants -----------------------------------------------------
+## Combined beta plots ----------
+# all
+nmds_all_bray <- ggplot(metadata_s, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =RemRev))+
+  geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
+  scale_colour_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  geom_point(size= 2.5, colour = "black")+
+  geom_point(size= 3.5, colour = "black")+
+  geom_point(size= 3)+
+  labs(shape = "Survey year", colour = "Treatment", title = paste0("Stress = ", round(NMDS_bray$stress, 4)))+
+  coord_fixed()+
+  scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
+  theme_test()
+nmds_all_jacc <- ggplot(metadata_s_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =RemRev))+
+  geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
+  scale_colour_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  geom_point(size= 2.5, colour = "black")+
+  geom_point(size= 3.5, colour = "black")+
+  geom_point(size= 3)+
+  labs(shape = "Survey year", colour = "Treatment", title = paste0("Stress = ", round(NMDS_Jacc$stress, 4)))+
+  coord_fixed()+
+  scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
+  theme_test()
+
+nmds_nat_bray <- ggplot(metadata_s_native, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =RemRev))+
+  geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
+  scale_colour_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  geom_point(size= 2.5, colour = "black")+
+  geom_point(size= 3.5, colour = "black")+
+  geom_point(size= 3)+
+  labs(shape = "Survey year", colour = "Treatment", title = paste0("Stress = ", round(NMDS_bray_native$stress, 4)))+
+  coord_fixed()+
+  scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
+  theme_test()
+nmds_nat_jacc <- ggplot(metadata_s_native_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =RemRev))+
+  geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
+  scale_colour_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  geom_point(size= 2.5, colour = "black")+
+  geom_point(size= 3.5, colour = "black")+
+  geom_point(size= 3)+
+  labs(shape = "Survey year", colour = "Treatment", title = paste0("Stress = ", round(NMDS_Jacc_native$stress, 4)))+
+  coord_fixed()+
+  scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
+  theme_test()
+
+nmds_non_bray <- ggplot(metadata_s_invasive, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =RemRev))+
+  geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
+  scale_colour_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  geom_point(size= 2.5, colour = "black")+
+  geom_point(size= 3.5, colour = "black")+
+  geom_point(size= 3)+
+  labs(shape = "Survey year", colour = "Treatment", title = paste0("Stress = ", round(NMDS_bray_invasive$stress, 4)))+
+  coord_fixed()+
+  scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
+  theme_test()
+nmds_non_jacc <- ggplot(metadata_s_invasive_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =RemRev))+
+  geom_path(aes(group=WptID), alpha=0.75, colour = "grey")+
+  scale_colour_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  geom_point(size= 2.5, colour = "black")+
+  geom_point(size= 3.5, colour = "black")+
+  geom_point(size= 3)+
+  labs(shape = "Survey year", colour = "Treatment", title = paste0("Stress = ", round(NMDS_Jacc_invasive$stress, 4)))+
+  coord_fixed()+
+  scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
+  theme_test()
+
+
+ggpubr::ggarrange(nmds_all_bray, nmds_all_jacc,
+                  nmds_nat_bray, nmds_nat_jacc,
+                  nmds_non_bray, nmds_non_jacc,
+                  common.legend = TRUE, legend="bottom",
+                  ncol = 2, nrow = 3, labels = c("A","B","C","D","E","F"),
+                  align = "hv")
+# ggsave(filename = "Veg-BETA-NMDS-combined.pdf", path = outdir, width = 10, height = 12)
+
+ggpubr::ggarrange(nmds_all_bray + labs(x = "NMDS1", y = "NMDS2", shape = "Survey year", colour = "Treatment", title = paste0("All plants, stress = ", round(NMDS_bray$stress, 4))),
+                  nmds_nat_bray + labs(x = "NMDS1", y = "NMDS2", shape = "Survey year", colour = "Treatment", title = paste0("Native plants, stress = ", round(NMDS_bray_native$stress, 4))),
+                  nmds_non_bray + labs(x = "NMDS1", y = "NMDS2", shape = "Survey year", colour = "Treatment", title = paste0("Non-native plants, stress = ", round(NMDS_bray_invasive$stress, 4))),
+                  common.legend = TRUE, legend="bottom",
+                  ncol = 1, labels = c("A","B","C"),
+                  align = "hv")
+# ggsave(filename = "Veg-BETA-NMDS-combined-bray.pdf", path = outdir, width = 5, height = 12)
+
+
+
+# Percentage non-native plants -----------------------------------------------------
 colnames(all_veg_data_v)
 
 # To get the proportion of exotic plants at the Site level (mean of each visit)
@@ -2357,25 +2768,48 @@ ggplot(prop_exotic_df4, aes(x = RevRem, y = prop_exotic, fill=RevRem))+
 ggplot(prop_exotic_df4, aes(x = RevRem, y = prop_exotic, fill=RevRem))+
   geom_violin()+
   geom_boxplot(outlier.shape = NA, width = 0.1, fill= "white")+
-  geom_jitter(height = 0, width = 0.1, aes(colour = HILG))+
+  geom_jitter(height = 0, width = 0.1, alpha = 0.5)+
   facet_grid(~Survey_Year, scales = "free_x", space = "free_x")+
-  scale_fill_manual(values = c("Revegetation"="#cc4c02","Remnant"="#41ab5d"))+
+  scale_fill_manual(values = c("Remnant" = "darkgreen", "Revegetation" = "orange"))+ 
+  # scale_fill_manual(values = c("Revegetation"="#cc4c02","Remnant"="#41ab5d"))+
+  labs(fill = "Treatment", x="", y = "Proportion of non-native plants")+
   theme_test()+
-  scale_color_manual(values = ("HILG" = "red"), na.value = "black")
-# ggsave(filename = "Veg-Proportion_Exotic-SurveyYear_RemRev-condensed.pdf", path = outdir, width = 7, height = 6)
+  theme(legend.position = "bottom")
+# ggsave(filename = "Veg-Proportion_Exotic-SurveyYear_RemRev-condensed.pdf", path = outdir, width = 6, height = 5)
+
+# plot
+nonnative_cover <- ggplot(prop_exotic_df4, aes(x = RevRem, y = prop_exotic*100, fill=RevRem))+
+  geom_violin(alpha = 0.75)+ 
+  geom_boxplot(outlier.shape = NA, width = 0.1, fill= "white")+
+  geom_jitter(height = 0, width = 0.1, alpha = 0.33) + 
+  facet_grid(~Survey_Year, scales = "free_x", space = "free_x")+
+  scale_fill_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  theme_test()+ 
+  theme(axis.text.x = element_text(angle = 45, hjust=1), legend.position = "bottom")+
+  ylim(0, 100)+
+  labs(fill = "Treatment", x="", y = "Non-native plant percentage (%)")
+nonnative_cover
+# ggsave(filename = "Veg-proportion_nonnative.pdf", path = outdir, width = 5, height = 6)
 
 # statsy things
 prop_lmem <- LMEM_permute_anova(data = prop_exotic_df4,
                                 response = "prop_exotic", fixed_effects = c("RevRem", "Survey_Year", "RevRem:Survey_Year"),
-                                random_effects = c("WptID", "Ecosystem"),
+                                random_effects = c("WptID"),
                                 nreps = 999)
 prop_lmem$formula
 # prop_exotic ~ RevRem + Survey_Year + RevRem:Survey_Year + (1 | WptID) + (1 | Ecosystem)
+prop_lmem$model
+r2(prop_lmem$model)
+# # R2 for Mixed Models
+#   Conditional R2: 0.822
+#      Marginal R2: 0.629
+
 prop_lmem$Anova
 #                      Chisq Df Pr(>Chisq)    
 # RevRem              83.078  1  < 2.2e-16 ***
 # Survey_Year        200.797  1  < 2.2e-16 ***
 # RevRem:Survey_Year  60.566  1  7.113e-15 ***
+
 prop_lmem$permutation_p_values
 # RevRem        Survey_Year RevRem:Survey_Year 
 #      0                  0                  0 
@@ -2611,14 +3045,14 @@ ggpubr::ggarrange(
     scale_fill_manual(values = c("Non-native" = "orange", "Native" = "darkgreen"))+
     theme_test() +
     theme(axis.text.y = element_text(color = species_colors_2015[levels(factor(combined_ind_2015$Species))]))+
-    labs(y = "Species-group association\n (Reveg indicators << | >> Remnant indicators)", x = "", title = "2025 surveys\n15 most strongly ± associated species", fill = "Native status"),
+    labs(y = "Species-group association\n (Reveg indicators << | >> Remnant indicators)", x = "", title = "2025 surveys\nMost strongly ± associated species", fill = "Native status"),
   ggplot(combined_ind_2025_topbot, aes(x = Species, y = Remnant, fill = Native_Status)) +
     geom_col(colour= "black") +
     coord_flip()+
     scale_fill_manual(values = c("Non-native" = "orange", "Native" = "darkgreen"))+
     theme_test() +
     theme(axis.text.y = element_text(color = species_colors_2025[levels(factor(combined_ind_2025_topbot$Species))]))+
-    labs(y = "Species-group association\n (Reveg indicators << | >> Remnant indicators)", x = "", title = "2025 surveys\n15 most strongly ± associated species", fill = "Native status")
+    labs(y = "Species-group association\n (Reveg indicators << | >> Remnant indicators)", x = "", title = "2025 surveys\nMost strongly ± associated species", fill = "Native status")
   ,
   align ="hv", common.legend = TRUE
 )
@@ -2743,15 +3177,46 @@ ggplot(combined_ind_Rem3, aes(x = Species, y = `2025`, fill = Native_Status)) +
   labs(y = "Species-group association (Reference: 2025 surveys)", x = "Species", title = "Remnant sites")
 # ggsave(filename = "Veg-IndicatorSpecies-SurveyYears-remnant_only-short.pdf", path = outdir, width = 9, height = 7)
 
+# Were the species on the planting lists???
+planting_data <- read_excel("Survey_Data_2015.xlsx", sheet = "Planting lists")
+# View(planting_data)
+all_planted_spp <- planting_data %>%
+  select(SPECIES) %>%
+  distinct()
+
+combined_ind_Rev3$is_planted <- ifelse(combined_ind_Rev3$Species %in% all_planted_spp$SPECIES, "[x]", "   ")
+combined_ind_Rev3$Species_planted <- paste0(combined_ind_Rev3$Species, " ", combined_ind_Rev3$is_planted)
+
+combined_ind_Rem3$is_planted <- ifelse(combined_ind_Rem3$Species %in% all_planted_spp$SPECIES, "[x]", "   ")
+combined_ind_Rem3$Species_planted <- paste0(combined_ind_Rem3$Species, " ", combined_ind_Rem3$is_planted)
+
+combined_ind_Rev3 <- combined_ind_Rev3 %>% 
+  mutate(Species_planted = factor(Species_planted, levels = Species_planted[order(`2025`, decreasing = FALSE)]),
+         Native_Status = ifelse(Exotic == 1, "Non-native", "Native"))
+
+combined_ind_Rem3 <- combined_ind_Rem3 %>% 
+  mutate(Species_planted = factor(Species_planted, levels = Species_planted[order(`2025`, decreasing = FALSE)]),
+         Native_Status = ifelse(Exotic == 1, "Non-native", "Native"))
+
+species_colours_Rem3 <- setNames(
+  ifelse(combined_ind_Rem3$Native_Status == "Non-native", "orange", "darkgreen"),
+  combined_ind_Rem3$Species_planted
+)
+
+species_colours_Rev3 <- setNames(
+  ifelse(combined_ind_Rev3$Native_Status == "Non-native", "orange", "darkgreen"),
+  combined_ind_Rev3$Species_planted
+)
+
 # Plot together
 ggpubr::ggarrange(
-  ggplot(combined_ind_Rev3, aes(x = Species, y = `2025`, fill = Native_Status)) +
+  ggplot(combined_ind_Rev3, aes(x = Species_planted, y = `2025`, fill = Native_Status)) +
     geom_col(colour= "black") +
     coord_flip()+
     scale_fill_manual(values = c("Non-native" = "orange", "Native" = "darkgreen"))+
     theme_test() +
     # theme(axis.text.y = element_text(color = species_colors[levels(factor(combined_ind_2025$Species))]))+
-    theme(axis.text.y = element_text(color = species_colours_Rev3[levels(factor(combined_ind_Rev3$Species))]))+
+    theme(axis.text.y = element_text(color = species_colours_Rev3[levels(factor(combined_ind_Rev3$Species_planted))]))+
     labs(y = "Species-group association\n (2015 indicators <- | -> 2025 indicators)", x = "Species", title = "Revegetation sites"),
   ggplot(combined_ind_Rem3, aes(x = Species, y = `2025`, fill = Native_Status)) +
     geom_col(colour= "black") +
@@ -2759,12 +3224,57 @@ ggpubr::ggarrange(
     scale_fill_manual(values = c("Non-native" = "orange", "Native" = "darkgreen"))+
     theme_test() +
     # theme(axis.text.y = element_text(color = species_colors[levels(factor(combined_ind_2025$Species))]))+
-    theme(axis.text.y = element_text(color = species_colours_Rem3[levels(factor(combined_ind_Rem3$Species))]))+
+    theme(axis.text.y = element_text(color = species_colours_Rem3[levels(factor(combined_ind_Rem3$Species_planted))]))+
     labs(y = "Species-group association\n (2015 indicators <- | -> 2025 indicators)", x = "Species", title = "Remnant sites")
   ,
   align ="hv", common.legend = TRUE
 )
 # ggsave(filename = "Veg-IndicatorSpecies-SurveyYears-Remnant_Revegetation.pdf", path = outdir, width = 13, height = 5)
+
+combined_ind_Rev3$Native_Status_2 <- paste0("Revegetation, ", combined_ind_Rev3$Native_Status)
+combined_ind_Rem3$Native_Status_2 <- paste0("Remnant, ", combined_ind_Rem3$Native_Status)
+
+species_colours_Rev3_revised <- setNames(
+  ifelse(combined_ind_Rev3$Native_Status == "Non-native", "black", "#D55E00"),
+  combined_ind_Rev3$Species_planted
+)
+
+species_colours_Rem3_revised <- setNames(
+  ifelse(combined_ind_Rem3$Native_Status == "Non-native", "black", "darkgreen"),
+  combined_ind_Rem3$Species
+)
+
+status_levels <- c(
+  "Revegetation, Non-native",
+  "Revegetation, Native",
+  "Remnant, Non-native",
+  "Remnant, Native"
+)
+
+status_cols <- c(
+  "Revegetation, Non-native" = "#F6C79C",
+  "Revegetation, Native" = "orange",
+  "Remnant, Non-native" = "#BFDDBF",
+  "Remnant, Native" = "darkgreen"
+)
+
+ggpubr::ggarrange(
+  ggplot(combined_ind_Rev3, aes(x = Species_planted, y = `2025`, fill = Native_Status_2)) +
+    geom_col(colour= "black") +
+    coord_flip()+
+    scale_fill_manual(values = status_cols, limits = status_levels, drop = FALSE)+
+    theme_test() +
+    theme(axis.text.y = element_text(color = species_colours_Rev3_revised[levels(factor(combined_ind_Rev3$Species_planted))]), legend.position = "bottom")+
+    labs(y = "Species-group association\n (2015 indicators <- | -> 2025 indicators)", x = "Species", title = "Revegetation sites", fill = "Status"),
+  ggplot(combined_ind_Rem3, aes(x = Species, y = `2025`, fill = Native_Status_2)) +
+    geom_col(colour= "black") +
+    coord_flip()+
+    scale_fill_manual(values = status_cols, limits = status_levels, drop = FALSE)+
+    theme_test() +
+    theme(axis.text.y = element_text(color = species_colours_Rem3_revised[levels(factor(combined_ind_Rem3$Species))]), legend.position = "bottom")+
+    labs(y = "Species-group association\n (2015 indicators <- | -> 2025 indicators)", x = "Species", title = "Remnant sites", fill = "Status"),
+  align ="hv",legend = "bottom"
+)
 
 # Top 15 positive and negative difference values
 # Revegetation: top 15 + bottom 15
@@ -2778,19 +3288,19 @@ combined_ind_Rem_topbot <- combined_ind_Rem3 %>%
   slice(c(1:15, (n() - 14):n()))
 
 ggpubr::ggarrange(
-  ggplot(combined_ind_Rev_topbot, aes(x = Species, y = `2025`, fill = Native_Status)) +
+  ggplot(combined_ind_Rev_topbot, aes(x = Species_planted, y = `2025`, fill = Native_Status)) +
     geom_col(colour= "black") +
     coord_flip()+
     scale_fill_manual(values = c("Non-native" = "orange", "Native" = "darkgreen"))+
     theme_test() +
-    theme(axis.text.y = element_text(color = species_colours_Rev3[levels(factor(combined_ind_Rev_topbot$Species))]))+
+    theme(axis.text.y = element_text(color = species_colours_Rev3[levels(factor(combined_ind_Rev_topbot$Species_planted))]))+
     labs(y = "Species-group association\n 2015 indicators <<     |     >> 2025 indicators", x = "", title = "Revegetation sites\n15 most strongly ± associated species", fill = "Native status"),
-  ggplot(combined_ind_Rem_topbot, aes(x = Species, y = `2025`, fill = Native_Status)) +
+  ggplot(combined_ind_Rem_topbot, aes(x = Species_planted, y = `2025`, fill = Native_Status)) +
     geom_col(colour= "black") +
     coord_flip()+
     scale_fill_manual(values = c("Non-native" = "orange", "Native" = "darkgreen"))+
     theme_test() +
-    theme(axis.text.y = element_text(color = species_colours_Rem3[levels(factor(combined_ind_Rem_topbot$Species))]))+
+    theme(axis.text.y = element_text(color = species_colours_Rem3[levels(factor(combined_ind_Rem_topbot$Species_planted))]))+
     labs(y = "Species-group association\n 2015 indicators <<     |     >> 2025 indicators", x = "", title = "Remnant sites\n15 most strongly ± associated species", fill = "Native status")
   ,
   align ="hv", common.legend = TRUE
@@ -2821,9 +3331,6 @@ ggpubr::ggarrange(
   align ="hv", common.legend = TRUE, ncol=1
 )
 # ggsave(filename = "Veg-IndicatorSpecies-SurveyYears-Remnant_Revegetation-tall.pdf", path = outdir, width = 6.5, height = 10)
-
-
-
 
 
 #### within veg comparisons ----------------------------------------------------
@@ -2908,7 +3415,604 @@ ggpubr::ggarrange(
 )
 # ggsave("Indicator-species-2025-surveys by ecosystemTYPE.pdf", path = outdir, height = 10, width = 15)
 
-# NEXT add detail about functional groups to see if different proportions of grasse and herbs are observed
+
+## SPLIT BY PLANTLIST ONLY --------------------
+# Were the species on the planting lists???
+planting_data <- read_excel("Survey_Data_2015.xlsx", sheet = "Planting lists")
+
+all_planted_spp <- planting_data %>%
+  select(SPECIES) %>%
+  distinct()
+
+# View(all_veg_data_v)
+
+# REVEGETATION
+veg_species_wide_beta_Rev_p <- veg_species_wide_beta_Rev
+# View(veg_species_wide_beta_Rev)
+veg_species_wide_beta_Rev_p <- veg_species_wide_beta_Rev_p %>%
+  select(any_of(all_planted_spp$SPECIES))
+dim(veg_species_wide_beta_Rev)   # 32 686
+dim(veg_species_wide_beta_Rev_p) # 32 134
+
+
+# Revegetation
+# Compute Revegetation comparisons
+multipatt.obj_Rev_p <- multipatt(x = veg_species_wide_beta_Rev_p, 
+                                 cluster = metadata_s_Rev$Survey_Year,
+                                 control = how(nperm=999))
+summary(multipatt.obj_Rev_p)
+
+# strassoc comparisoins (strength of associations)
+strassoc.obj_Rev_p <- strassoc(veg_species_wide_beta_Rev_p, 
+                               cluster = metadata_s_Rev$Survey_Year)
+
+strassoc.obj_Rev_p <- as.data.frame(strassoc.obj_Rev_p)
+strassoc.obj_Rev_p$Species <- rownames(strassoc.obj_Rev_p)
+
+multipatt.obj_Rev_sign_p <- multipatt.obj_Rev_p$sign
+multipatt.obj_Rev_sign_p$Species <- rownames(multipatt.obj_Rev_sign_p)
+# head(multipatt.obj_Rev_sign_p)
+# head(strassoc.obj_Rev_p)
+
+# Revegetation
+combined_ind_Rev_p <- left_join(multipatt.obj_Rev_sign_p, strassoc.obj_Rev_p, by = "Species")
+
+# get introduced species
+veg_data_intr <- veg_data_long %>%
+  select(`SCIENTIFIC NAME`, INTRODUCED) %>%
+  distinct()
+colnames(veg_data_intr) <- c("Species", "non-native")
+
+dim(combined_ind_Rev_p)
+dim(veg_data_intr)
+
+combined_ind_Rev2_p <- left_join(combined_ind_Rev_p, veg_data_intr, by = "Species")
+dim(combined_ind_Rev2_p)
+
+combined_ind_Rev3_p <- combined_ind_Rev2_p %>% 
+  filter(p.value < 0.05) %>% 
+  mutate(Species = factor(Species, levels = Species[order(`2025`, decreasing = FALSE)]),
+         Native_Status = ifelse(`non-native` == 1, "Non-native", "Native"))
+
+combined_ind_Rev3_p$`non-native` <- as.factor(combined_ind_Rev3_p$`non-native`)
+
+
+species_colours_Rev3_p <- setNames(
+  ifelse(combined_ind_Rev3$Native_Status == "Non-native", "orange", "darkgreen"),
+  combined_ind_Rev3$Species
+)
+
+
+# Indicator species analysis plot
+ggplot(combined_ind_Rev3_p, aes(x = Species, y = `2025`, fill = Native_Status)) +
+  geom_col(colour= "black") +
+  coord_flip()+
+  scale_fill_manual(values = c("Non-native" = "orange", "Native" = "darkgreen"))+
+  theme_test() +
+  theme(axis.text.y = element_text(color = species_colours_Rev3_p[levels(factor(combined_ind_Rev3_p$Species))]))+
+  labs(y = "Species-group association (Reference: 2025 surveys)", x = "Species", title = "Revegetation sites")
+
+nrow(combined_ind_Rev3_p)
+
+# For all the species planted (139 species)
+((139-20)/139)*100 # 85.61 % showed no change over time
+(20/139)*100       # 14.39 % showed change over time
+(4/139)*100        #  of these: 2.88 % declined over time
+(16/139)*100       #            11.51 % increased over time
+
+# REMNANT
+veg_species_wide_beta_Rem_p <- veg_species_wide_beta_Rem
+# View(veg_species_wide_beta_Rem)
+veg_species_wide_beta_Rem_p <- veg_species_wide_beta_Rem_p %>%
+  select(any_of(all_planted_spp$SPECIES))
+dim(veg_species_wide_beta_Rem)   # 32 686
+dim(veg_species_wide_beta_Rem_p) # 32 134
+
+
+# Remnant
+# Compute Remnant comparisons
+multipatt.obj_Rem_p <- multipatt(x = veg_species_wide_beta_Rem_p, 
+                                 cluster = metadata_s_Rem$Survey_Year,
+                                 control = how(nperm=999))
+summary(multipatt.obj_Rem_p)
+
+# strassoc comparisoins (strength of associations)
+strassoc.obj_Rem_p <- strassoc(veg_species_wide_beta_Rem_p, 
+                               cluster = metadata_s_Rem$Survey_Year)
+
+strassoc.obj_Rem_p <- as.data.frame(strassoc.obj_Rem_p)
+strassoc.obj_Rem_p$Species <- rownames(strassoc.obj_Rem_p)
+
+multipatt.obj_Rem_sign_p <- multipatt.obj_Rem_p$sign
+multipatt.obj_Rem_sign_p$Species <- rownames(multipatt.obj_Rem_sign_p)
+# head(multipatt.obj_Rem_sign_p)
+# head(strassoc.obj_Rem_p)
+
+# Remnant
+combined_ind_Rem_p <- left_join(multipatt.obj_Rem_sign_p, strassoc.obj_Rem_p, by = "Species")
+
+# get introduced species
+veg_data_intr <- veg_data_long %>%
+  select(`SCIENTIFIC NAME`, INTRODUCED) %>%
+  distinct()
+colnames(veg_data_intr) <- c("Species", "non-native")
+
+dim(combined_ind_Rem_p)
+dim(veg_data_intr)
+
+combined_ind_Rem2_p <- left_join(combined_ind_Rem_p, veg_data_intr, by = "Species")
+dim(combined_ind_Rem2_p)
+
+combined_ind_Rem3_p <- combined_ind_Rem2_p %>% 
+  filter(p.value < 0.05) %>% 
+  mutate(Species = factor(Species, levels = Species[order(`2025`, decreasing = FALSE)]),
+         Native_Status = ifelse(`non-native` == 1, "Non-native", "Native"))
+
+combined_ind_Rem3_p$`non-native` <- as.factor(combined_ind_Rem3_p$`non-native`)
+
+
+species_colours_Rem3_p <- setNames(
+  ifelse(combined_ind_Rem3$Native_Status == "Non-native", "orange", "darkgreen"),
+  combined_ind_Rem3$Species
+)
+
+
+# Indicator species analysis plot
+ggplot(combined_ind_Rem3_p, aes(x = Species, y = `2025`, fill = Native_Status)) +
+  geom_col(colour= "black") +
+  coord_flip()+
+  scale_fill_manual(values = c("Non-native" = "orange", "Native" = "darkgreen"))+
+  theme_test() +
+  # theme(axis.text.y = element_text(color = species_colors[levels(factor(combined_ind_2025$Species))]))+
+  theme(axis.text.y = element_text(color = species_colours_Rem3_p[levels(factor(combined_ind_Rem3_p$Species))]))+
+  labs(y = "Species-group association (Reference: 2025 surveys)", x = "Species", title = "Remnant sites")
+# ggsave(filename = "Veg-IndicatorSpecies-SurveyYears-remnant_only-short.pdf", path = outdir, width = 9, height = 7)
+
+
+# Abundance based models -------------------------------------------------------
+library(dplyr)
+library(tidyr)
+library(lme4)
+library(broom.mixed)
+library(ggpubr)
+library(ggplot2)
+library(car)
+library(readxl)
+
+# Filter data
+all_veg_data_v_rev <- subset(all_veg_data_v, Treatment == "Revegetated")
+
+planting_data <- read_excel("Survey_Data_2015.xlsx", sheet = "Planting lists")
+all_planted_spp <- planting_data %>% select(SPECIES) %>% distinct()
+
+df_planted <- all_veg_data_v_rev %>% filter(`SCIENTIFIC NAME` %in% all_planted_spp$SPECIES)
+
+common_planted <- df_planted %>%
+  filter(cover_midpoint > 0) %>%
+  count(`SCIENTIFIC NAME`, Survey_Year) %>%
+  filter(n >= 5) %>%
+  count(`SCIENTIFIC NAME`) %>%
+  filter(n == 2) %>%   # present in both years
+  pull(`SCIENTIFIC NAME`)
+
+df_planted2 <- all_veg_data_v_rev %>%
+  filter(`SCIENTIFIC NAME` %in% common_planted) %>%
+  mutate(presence = ifelse(cover_midpoint > 0, 1, 0))
+
+# Fill in zeros for all plots × years × species
+all_combinations <- expand.grid(
+  WptID = unique(df_planted2$WptID),
+  Survey_Year = unique(df_planted2$Survey_Year),
+  SCIENTIFIC_NAME = common_planted
+)
+
+df_full <- all_combinations %>%
+  left_join(
+    df_planted2 %>% select(WptID, Survey_Year, SCIENTIFIC_NAME = `SCIENTIFIC NAME`, presence, cover_midpoint),
+    by = c("WptID", "Survey_Year", "SCIENTIFIC_NAME")
+  ) %>%
+  mutate(
+    presence = ifelse(is.na(presence), 0, presence),
+    cover_midpoint = ifelse(is.na(cover_midpoint), 0, cover_midpoint)
+  )
+
+# Fit models
+df_summary <- df_full %>%
+  group_by(SCIENTIFIC_NAME) %>%
+  summarise(
+    n_plots = n_distinct(WptID),
+    n_years = n_distinct(Survey_Year),
+    n_present = sum(presence > 0)
+  )
+# Keep species with ≥3 plots and ≥2 years and some presence
+valid_species <- df_summary %>%
+  filter(n_plots >= 3, n_years >= 2, n_present > 0) %>%
+  pull(SCIENTIFIC_NAME)
+
+mods_comp_list <- list()
+mods_pres_list <- list()
+
+for (sp in valid_species) {
+  DF <- df_full %>% filter(SCIENTIFIC_NAME == sp)
+  
+  # Cover model
+  if(sum(DF$cover_midpoint > 0) >= 3) {
+    comp_mod <- tryCatch({
+      lmer(log1p(cover_midpoint) ~ Survey_Year + (1 | WptID), 
+           data = DF %>% filter(cover_midpoint > 0))
+    }, error = function(e) {
+      # fallback: without random effect
+      lm(log1p(cover_midpoint) ~ Survey_Year, data = DF %>% filter(cover_midpoint > 0))
+    })
+    mods_comp_list[[sp]] <- comp_mod
+  }
+  
+  # Presence model
+  if(length(unique(DF$presence)) > 1) {
+    pres_mod <- tryCatch({
+      glmer(presence ~ Survey_Year + (1 | WptID), family = binomial(), data = DF)
+    }, error = function(e) {
+      glm(presence ~ Survey_Year, family = binomial(), data = DF)
+    })
+    mods_pres_list[[sp]] <- pres_mod
+  }
+}
+# mod <- mods_comp_list[[1]]
+# summary(mod <- mods_comp_list[[sp]])
+
+# cover results
+library(dplyr)
+library(car)
+
+cover_results <- lapply(names(mods_comp_list), function(sp) {
+  mod <- mods_comp_list[[sp]]
+  # skip NULL or failed models
+  if(is.null(mod)) return(NULL)
+  # wrap in tryCatch to skip models that throw errors
+  result <- tryCatch({
+    summ <- summary(mod)
+    Pval <- car::Anova(mod)            # Survey_Year p-value
+    Pval <- Pval$`Pr(>Chisq)`          # numeric vector
+    coefs <- as.data.frame(summ$coefficients)
+    coefs <- coefs[rownames(coefs) != "(Intercept)", , drop = FALSE]
+    
+    confi <- as.data.frame(confint(mod, method = "Wald"))
+    
+    # skip models without exactly 1 non-intercept term
+    if(nrow(coefs) != 1) return(NULL)
+    data.frame(
+      SPECIES = sp,
+      cover_estimate = coefs$Estimate,
+      cover_SE = coefs$`Std. Error`,
+      cover_stat = coefs$`t value`,
+      P_vals = Pval,
+      # CI_low  = coefs$Estimate[1] - 1.96 * coefs$`Std. Error`[1],
+      # CI_high = coefs$Estimate[1] + 1.96 * coefs$`Std. Error`[1]
+      CI_low  = confi[["Survey_Year2025","2.5 %",]],
+      CI_high = confi[["Survey_Year2025","97.5 %",]]
+      )
+  }, error = function(e){
+    warning(paste("Skipping species", sp, "due to error:", e$message))
+    return(NULL)
+  })
+  return(result)
+}) |> bind_rows()
+head(cover_results)
+
+cover_results$cover_fold_change <- exp(cover_results$cover_estimate) - 1
+cover_results$CFC_low = exp(cover_results$CI_low) - 1
+cover_results$CFC_high = exp(cover_results$CI_high) - 1
+
+cover_results$SPECIES <- factor(cover_results$SPECIES, levels = cover_results$SPECIES[order(cover_results$cover_fold_change)])
+
+cover_results <- cover_results |>
+  mutate(
+    P_adj_BH  = p.adjust(P_vals, method = "BH"),   # FDR (recommended)
+    P_adj_bonf = p.adjust(P_vals, method = "bonferroni")
+  )
+cover_results$sig <- ifelse(cover_results$P_adj_BH < 0.05, "*", "ns")
+
+# presence results
+pres_results <- lapply(names(mods_pres_list), function(sp) {
+  mod <- mods_pres_list[[sp]]
+  coefs <- as.data.frame(summary(mod)$coefficients)
+  coefs <- coefs[rownames(coefs) != "(Intercept)", , drop = FALSE]
+  if (nrow(coefs) != 1) return(NULL)
+  anova_tbl <- car::Anova(mod, type = 3)
+  pval <- anova_tbl["Survey_Year", "Pr(>Chisq)"]
+  confi <- as.data.frame(confint(mod, method = "Wald"))
+  
+  data.frame(
+    SPECIES = sp,
+    presence_estimate = coefs$Estimate,
+    presence_SE = coefs$`Std. Error`,
+    presence_stat = coefs$`z value`,
+    presence_p = pval,
+    # CI_low  = coefs$Estimate[1] - 1.96 * coefs$`Std. Error`[1],
+    # CI_high = coefs$Estimate[1] + 1.96 * coefs$`Std. Error`[1]
+    CI_low  = confi[["Survey_Year2025","2.5 %",]],
+    CI_high = confi[["Survey_Year2025","97.5 %",]]
+    
+  )
+}) |> bind_rows()
+
+pres_results$SPECIES <- factor(pres_results$SPECIES, levels = pres_results$SPECIES[order(pres_results$presence_estimate)])
+pres_results$sig <- ifelse(pres_results$presence_p < 0.05, "*", "ns")
+pres_results <- pres_results |>
+  mutate(
+    P_adj_BH  = p.adjust(presence_p, method = "BH"),   # FDR (recommended)
+    P_adj_bonf = p.adjust(presence_p, method = "bonferroni")
+  )
+pres_results$sig <- ifelse(pres_results$P_adj_BH < 0.05, "*", "ns")
+pres_results$OR <- exp(pres_results$presence_estimate)
+
+cover_results$col <- ifelse(cover_results$cover_fold_change < 0, "darkred", "darkblue")
+pres_results$col <- ifelse(pres_results$presence_estimate < 0, "darkred", "darkblue")
+
+head(pres_results)
+# Plots
+ggpubr::ggarrange(
+  # Cover fold-change
+  ggplot(data = cover_results[cover_results$sig == "*",],  aes(x = SPECIES, y = cover_fold_change, fill = col)) +
+    geom_col() +
+    geom_errorbar(aes(ymin = CFC_low, ymax = CFC_high), width = 0.2) +
+    coord_flip() +
+    theme_test() +
+    ylab("Relative change in mean cover\n(%)") +
+    xlab("")+
+    scale_fill_identity(),
+  # Presence log-odds
+  ggplot(data = pres_results[pres_results$sig == "*",],  aes(x = SPECIES, y = presence_estimate, fill = col)) +
+    geom_col() +
+    geom_errorbar(aes(ymin = CI_low, ymax = CI_high), width = 0.2) +
+    coord_flip() +
+    theme_test() +
+    ylab("Change in likelihood of occurrence\n(log-odds)") +
+    xlab("")+
+    scale_fill_identity(),
+  legend = 'none'
+)
+# ggsave(filename = "Veg-MODEL-comparisons-abundance-presence.pdf", path = outdir, width = 14, height = 14)
+
+dim(cover_results) # 93 13
+dim(pres_results) # 100  10
+dim(cover_results[cover_results$sig == "*",]) # 73 13
+dim(pres_results[pres_results$sig == "*",]) # 73 10
+
+
+# Filter data
+all_veg_data_v_rev <- subset(all_veg_data_v, Treatment == "Revegetated")
+
+planting_data <- read_excel("Survey_Data_2015.xlsx", sheet = "Planting lists")
+all_planted_spp <- planting_data %>% select(SPECIES) %>% distinct()
+
+df_planted <- all_veg_data_v_rev %>% filter(`SCIENTIFIC NAME` %in% all_planted_spp$SPECIES)
+
+common_planted <- df_planted %>%
+  filter(cover_midpoint > 0) %>%
+  count(`SCIENTIFIC NAME`, Survey_Year) %>%
+  filter(n >= 5) %>%
+  count(`SCIENTIFIC NAME`) %>%
+  filter(n == 2) %>%   # present in both years
+  pull(`SCIENTIFIC NAME`)
+
+df_planted2 <- all_veg_data_v_rev %>%
+  filter(`SCIENTIFIC NAME` %in% common_planted) %>%
+  mutate(presence = ifelse(cover_midpoint > 0, 1, 0))
+
+# Fill in zeros for all plots × years × species
+all_combinations <- expand.grid(
+  WptID = unique(df_planted2$WptID),
+  Survey_Year = unique(df_planted2$Survey_Year),
+  SCIENTIFIC_NAME = common_planted
+)
+
+df_full <- all_combinations %>%
+  left_join(
+    df_planted2 %>% select(WptID, Survey_Year, SCIENTIFIC_NAME = `SCIENTIFIC NAME`, presence, cover_midpoint),
+    by = c("WptID", "Survey_Year", "SCIENTIFIC_NAME")
+  ) %>%
+  mutate(
+    presence = ifelse(is.na(presence), 0, presence),
+    cover_midpoint = ifelse(is.na(cover_midpoint), 0, cover_midpoint)
+  )
+
+# Fit models
+df_summary <- df_full %>%
+  group_by(SCIENTIFIC_NAME) %>%
+  summarise(
+    n_plots = n_distinct(WptID),
+    n_years = n_distinct(Survey_Year),
+    n_present = sum(presence > 0)
+  )
+# Keep species with ≥3 plots and ≥2 years and some presence
+valid_species <- df_summary %>%
+  filter(n_plots >= 3, n_years >= 2, n_present > 0) %>%
+  pull(SCIENTIFIC_NAME)
+
+mods_comp_list <- list()
+mods_pres_list <- list()
+
+for (sp in valid_species) {
+  DF <- df_full %>% filter(SCIENTIFIC_NAME == sp)
+  
+  # Cover model
+  if(sum(DF$cover_midpoint > 0) >= 3) {
+    comp_mod <- tryCatch({
+      lmer(log1p(cover_midpoint) ~ Survey_Year + (1 | WptID), 
+           data = DF %>% filter(cover_midpoint > 0))
+    }, error = function(e) {
+      # fallback: without random effect
+      lm(log1p(cover_midpoint) ~ Survey_Year, data = DF %>% filter(cover_midpoint > 0))
+    })
+    mods_comp_list[[sp]] <- comp_mod
+  }
+  
+  # Presence model
+  if(length(unique(DF$presence)) > 1) {
+    pres_mod <- tryCatch({
+      glmer(presence ~ Survey_Year + (1 | WptID), family = binomial(), data = DF)
+    }, error = function(e) {
+      glm(presence ~ Survey_Year, family = binomial(), data = DF)
+    })
+    mods_pres_list[[sp]] <- pres_mod
+  }
+}
+# mod <- mods_comp_list[[1]]
+# summary(mod <- mods_comp_list[[sp]])
+
+# cover results
+library(dplyr)
+library(car)
+
+cover_results <- lapply(names(mods_comp_list), function(sp) {
+  mod <- mods_comp_list[[sp]]
+  # skip NULL or failed models
+  if(is.null(mod)) return(NULL)
+  # wrap in tryCatch to skip models that throw errors
+  result <- tryCatch({
+    summ <- summary(mod)
+    Pval <- car::Anova(mod)            # Survey_Year p-value
+    Pval <- Pval$`Pr(>Chisq)`          # numeric vector
+    coefs <- as.data.frame(summ$coefficients)
+    coefs <- coefs[rownames(coefs) != "(Intercept)", , drop = FALSE]
+    
+    confi <- as.data.frame(confint(mod, method = "Wald"))
+    
+    # skip models without exactly 1 non-intercept term
+    if(nrow(coefs) != 1) return(NULL)
+    data.frame(
+      SPECIES = sp,
+      cover_estimate = coefs$Estimate,
+      cover_SE = coefs$`Std. Error`,
+      cover_stat = coefs$`t value`,
+      P_vals = Pval,
+      # CI_low  = coefs$Estimate[1] - 1.96 * coefs$`Std. Error`[1],
+      # CI_high = coefs$Estimate[1] + 1.96 * coefs$`Std. Error`[1]
+      CI_low  = confi[["Survey_Year2025","2.5 %",]],
+      CI_high = confi[["Survey_Year2025","97.5 %",]]
+    )
+  }, error = function(e){
+    warning(paste("Skipping species", sp, "due to error:", e$message))
+    return(NULL)
+  })
+  return(result)
+}) |> bind_rows()
+head(cover_results)
+
+cover_results$cover_fold_change <- exp(cover_results$cover_estimate) - 1
+cover_results$CFC_low = exp(cover_results$CI_low) - 1
+cover_results$CFC_high = exp(cover_results$CI_high) - 1
+
+cover_results$SPECIES <- factor(cover_results$SPECIES, levels = cover_results$SPECIES[order(cover_results$cover_fold_change)])
+
+cover_results <- cover_results |>
+  mutate(
+    P_adj_BH  = p.adjust(P_vals, method = "BH"),   # FDR (recommended)
+    P_adj_bonf = p.adjust(P_vals, method = "bonferroni")
+  )
+cover_results$sig <- ifelse(cover_results$P_adj_BH < 0.05, "*", "ns")
+
+# presence results
+pres_results <- lapply(names(mods_pres_list), function(sp) {
+  mod <- mods_pres_list[[sp]]
+  coefs <- as.data.frame(summary(mod)$coefficients)
+  coefs <- coefs[rownames(coefs) != "(Intercept)", , drop = FALSE]
+  if (nrow(coefs) != 1) return(NULL)
+  anova_tbl <- car::Anova(mod, type = 3)
+  pval <- anova_tbl["Survey_Year", "Pr(>Chisq)"]
+  confi <- as.data.frame(confint(mod, method = "Wald"))
+  
+  data.frame(
+    SPECIES = sp,
+    presence_estimate = coefs$Estimate,
+    presence_SE = coefs$`Std. Error`,
+    presence_stat = coefs$`z value`,
+    presence_p = pval,
+    # CI_low  = coefs$Estimate[1] - 1.96 * coefs$`Std. Error`[1],
+    # CI_high = coefs$Estimate[1] + 1.96 * coefs$`Std. Error`[1]
+    CI_low  = confi[["Survey_Year2025","2.5 %",]],
+    CI_high = confi[["Survey_Year2025","97.5 %",]]
+    
+  )
+}) |> bind_rows()
+
+pres_results$SPECIES <- factor(pres_results$SPECIES, levels = pres_results$SPECIES[order(pres_results$presence_estimate)])
+pres_results$sig <- ifelse(pres_results$presence_p < 0.05, "*", "ns")
+pres_results <- pres_results |>
+  mutate(
+    P_adj_BH  = p.adjust(presence_p, method = "BH"),   # FDR (recommended)
+    P_adj_bonf = p.adjust(presence_p, method = "bonferroni")
+  )
+pres_results$sig <- ifelse(pres_results$P_adj_BH < 0.05, "*", "ns")
+pres_results$OR <- exp(pres_results$presence_estimate)
+
+cover_results$col <- ifelse(cover_results$cover_fold_change < 0, "darkred", "darkblue")
+pres_results$col <- ifelse(pres_results$presence_estimate < 0, "darkred", "darkblue")
+
+head(pres_results)
+# Plots
+ggpubr::ggarrange(
+  # Cover fold-change
+  ggplot(data = cover_results[cover_results$sig == "*",],  aes(x = SPECIES, y = cover_fold_change, fill = col)) +
+    geom_col() +
+    geom_errorbar(aes(ymin = CFC_low, ymax = CFC_high), width = 0.2) +
+    coord_flip() +
+    theme_test() +
+    ylab("Relative change in mean cover\n(%)") +
+    xlab("")+
+    scale_fill_identity(),
+  # Presence log-odds
+  ggplot(data = pres_results[pres_results$sig == "*",],  aes(x = SPECIES, y = presence_estimate, fill = col)) +
+    geom_col() +
+    geom_errorbar(aes(ymin = CI_low, ymax = CI_high), width = 0.2) +
+    coord_flip() +
+    theme_test() +
+    ylab("Change in likelihood of occurrence\n(log-odds)") +
+    xlab("")+
+    scale_fill_identity(),
+  legend = 'none'
+)
+# ggsave(filename = "Veg-MODEL-comparisons-abundance-presence.pdf", path = outdir, width = 14, height = 14)
+
+dim(cover_results) # 93 13
+dim(pres_results) # 100  10
+dim(cover_results[cover_results$sig == "*",]) # 73 13
+dim(pres_results[pres_results$sig == "*",]) # 73 10
+
+
+
+
+
+# reformat for report:
+
+ggpubr::ggarrange(
+  ggplot(combined_ind_Rev3, aes(x = Species_planted, y = `2025`, fill = Native_Status_2)) +
+    geom_col(colour= "black") +
+    coord_flip()+
+    scale_fill_manual(values = status_cols, limits = status_levels, drop = FALSE)+
+    theme_test() +
+    theme(axis.text.y = element_text(color = species_colours_Rev3_revised[levels(factor(combined_ind_Rev3$Species_planted))]), legend.position = "bottom")+
+    labs(y = "Species-group association\n (2015 indicators <- | -> 2025 indicators)", x = "Species", title = "Indicator species of\nrevegetation sites", fill = "Status"),
+  ggplot(combined_ind_Rem3, aes(x = Species, y = `2025`, fill = Native_Status_2)) +
+    geom_col(colour= "black") +
+    coord_flip()+
+    scale_fill_manual(values = status_cols, limits = status_levels, drop = FALSE)+
+    theme_test() +
+    theme(axis.text.y = element_text(color = species_colours_Rem3_revised[levels(factor(combined_ind_Rem3$Species))]), legend.position = "bottom")+
+    labs(y = "Species-group association\n (2015 indicators <- | -> 2025 indicators)", x = "Species", title = "Indicator species of\nremnant sites", fill = "Status"),
+  ggplot(data = pres_results[pres_results$sig == "*",],  aes(x = SPECIES, y = presence_estimate, fill = col)) +
+    geom_col(colour="black") +
+    geom_errorbar(aes(ymin = CI_low, ymax = CI_high), width = 0.2) +
+    coord_flip() +
+    theme_test() +
+    labs(x = "", y = "Change in likelihood of occurrence\n(log-odds)", title = "Planted species in revegetation,\noccurance change over time") +
+    scale_fill_identity(guide = "legend")+
+    theme(legend.position = "bottom"),
+  align ="hv", ncol = 3, labels = c("A", "B", "C"))
+
+# ggsave(filename = "Veg-species-change-combined.pdf", path = outdir, width = 17, height =10)
+
 
 
 # Comparisons to planting lists - WORK IN PROGRESS ------------------------------------------------
@@ -2985,6 +4089,8 @@ planting_data4$RemRev <- ifelse(planting_data4$iPlantYear == "Remnant", "Remnant
 planting_data_combined <- planting_data4
 
 planting_data_combined$Survey_treat <- paste0(planting_data_combined$Survey_Year, "_", planting_data_combined$RemRev)
+# saveRDS(object = planting_data_combined, file = "planting_data_combined.RDS")
+
 planting_data_combined_REV <- subset(planting_data_combined, RemRev == "Revegetation")
 
 # planting_data_combined_REVplanted <- subset(planting_data_combined_REV, is_planted_sp == 1)
@@ -3248,4 +4354,5 @@ management_2025 <- management_2025 %>%
     str_detect(`Domestic grazing`, "High")   ~ "High",
     TRUE                            ~ NA_character_
   ))
+
 
