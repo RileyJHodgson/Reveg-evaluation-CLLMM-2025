@@ -42,6 +42,7 @@ all_soil_data <- all_soil_data %>%
   merge(all_soil_metadata, by = "Site_ID", all = TRUE)
 
 all_soil_data$Latitude <- ifelse(all_soil_data$Latitude > 0, all_soil_data$Latitude*-1, all_soil_data$Latitude)
+# saveRDS(object = all_soil_data, file = "all_soil_data.RDS")
 
 # Comparisons ------------------------------------------------------------------
 # View(all_soil_data)
@@ -160,8 +161,8 @@ metadata_pca <- all_soil_data[, sapply(all_soil_data, is.character)]
 
 
 library(vegan)
+all_soil_data_pca <- na.omit(all_soil_data_pca)
 all_soil_data_pca_std <- decostand(all_soil_data_pca, method = "standardize")
-# View(all_soil_data_pca_std)
 
 # Vegan
 soil_pca <- rda(all_soil_data_pca_std)
@@ -228,43 +229,19 @@ ylims_equal <- c(ymid - max_range/2, ymid + max_range/2)
 
 # ggplot
 pca_treatment <- ggplot()+
-  # 0 intercept lines
-  geom_vline(xintercept = 0, linewidth = 0.1, colour = "black", linetype = "dotted")+
-  geom_hline(yintercept = 0, linewidth = 0.1, colour = "black", linetype = "dotted")+
-  # Hulls for treatments
-  geom_polygon(data=hulls, aes(x = PC1, y = PC2,
-    group = Treatment, fill = Treatment), alpha=0.2, colour = "black", linewidth=0.2)+
-  # Fitted vectors (physchem variabeles)
-  geom_segment(data = vscores, colour="blue", linewidth = 0.2, alpha = 0.5,
-               aes(x = 0, y = 0, xend = PC1, yend = PC2))+
-  geom_text(data = vscores, colour="blue", hjust = 1, 
-            aes(x = PC1, y = PC2, label = variable))+
-  # sample points (physchem variabeles). fitted twice to get nice black border
-  geom_point(data = pca_data_bigger, size = 2.5, colour = "black",
-             aes(x = PC1, y = PC2, shape = Treatment))+
-  geom_point(data = pca_data_bigger, size = 2, 
-             aes(x = PC1, y = PC2, colour = Treatment, shape = Treatment))+
-  # # Centroids for Treatments
-  # geom_point(data = pca_data_bigger, size = 5, colour = "black",
-  #            aes(x = Treatment_centroid_pc1, y = Treatment_centroid_pc2,
-  #                shape = Treatment))+
-  # geom_point(data = pca_data_bigger, size = 4,
-  #            aes(x = Treatment_centroid_pc1, y = Treatment_centroid_pc2,
-  #                shape = Treatment, colour = Treatment))+
-  # geom_segment(data = pca_data_bigger, alpha = 0.5,
-  #              aes(x = Treatment_centroid_pc1,
-  #                  y = Treatment_centroid_pc2,
-  #                  xend = PC1, yend = PC2,
-  #                  colour = Treatment))+
-  # Fine tuning aesthetics
+  geom_segment(data = vscores, colour="blue", linewidth = 0.2, alpha = 0.5, aes(x = 0, y = 0, xend = PC1, yend = PC2))+
+  geom_text(data = vscores, colour="blue", hjust = 1,  aes(x = PC1, y = PC2, label = variable))+
+  geom_point(data = pca_data_bigger, size = 3.5, colour = "black", aes(x = PC1, y = PC2, shape = Treatment))+
+  geom_point(data = pca_data_bigger, size = 3,  aes(x = PC1, y = PC2, colour = Treatment, shape = Treatment))+
   scale_colour_manual(values = TreatCols)+
   scale_fill_manual(values = TreatCols)+
-  coord_equal(ratio = 1 , xlim=xlims_equal, ylim = ylims_equal)+
-  labs(x = paste0("PC1 (", round(va_pc1, 3)*100, "%)"), 
-       y = paste0("PC2 (", round(va_pc2, 3)*100, "%)"))+
+  coord_fixed()+
+  lims(x = c(-0.6, 0.4), y = c(-0.5, 0.5))+
+  # coord_equal(ratio = 1 , xlim=xlims_equal, ylim = ylims_equal)+
+  labs(x = paste0("PC1 (", round(va_pc1, 3)*100, "%)"), y = paste0("PC2 (", round(va_pc2, 3)*100, "%)"))+
   theme_test()
 pca_treatment
-# ggsave(filename = "Soil-PCA-treatment.pdf", path = outdir, width = 8, height = 6)
+# ggsave(filename = "Soil-PCA-treatment2.pdf", path = outdir, width = 8, height = 6)
 
 # Soil physchem treatment stats
 # all_soil_data_pca_std <- decostand(all_soil_data_pca, method = "standardize")
@@ -374,6 +351,7 @@ cor_pc_res <- cor.mtest(all_soil_data_pca, conf.level = .95)
 cor_pc_res <- ifelse()
 corplot_obj <- corrplot(cor_pc, type="upper", order="hclust", "ellipse",
          p.mat = cor_pc_res$p)
+
 
 
 
