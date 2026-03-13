@@ -22,8 +22,39 @@ colnames(all_bird_data)
 metadata_v <- read_excel("Goyder-soil_analysis-metadata.xlsx", sheet = "site-info")
 colnames(metadata_v)
 
+# Quick summary 
+length(unique(all_bird_data$tSpp))
+
+# Remove water birds from spxsp_df_pa
+water_birds <- c(
+  "Threskiornis molucca", # Australian White Ibis
+  "Threskiornis spinicollis", # Straw-necked Ibis
+  "Pelecanus conspicillatus", # Australian Pelican
+  "Haematopus longirostris", # Australian Pied Oystercatcher
+  "Microcarbo melanoleucos", # Little Pied Cormorant
+  "Phalacrocorax varius", # Pied Cormorant
+  "Phalacrocorax carbo", # Great Cormorant
+  "Phalacrocorax sulcirostris", # Little Black Cormorant
+  "Microcarbo melanoleucos", # Little Pied Cormorant"
+  "Ardea alba", # Great Egret)
+  "Platalea regia", # Royal Spoonbill
+  "Cygnus atratus", # Black Swan
+  "Egretta novaehollandiae", # White-faced Heron
+  "Ardea pacifica", # White-necked Heron
+  "Anas superciliosa", # Pacific Black Duck
+  "Tadorna tadornoides", # Australian Shelduck
+  "Chroicocephalus novaehollandiae", # Silver Gull
+  "Hydroprogne caspia", # Caspian Tern
+  "Thalasseus bergii", # Crested Tern
+  # "Vanellus miles", # Masked Lapwing               # Advice required
+  # "Charadrius ruficapillus", # Red-capped Plover   # Advice required
+  "Chlidonias hybrida" # Whiskered Tern
+)
+
 # Assuming bInOut is whether Birds are in or outside of the survey boundaries
 all_bird_data <- subset(all_bird_data, bInOut == 1)
+length(unique(all_bird_data$tSpp)) # 124
+
 all_bird_data$RemRev <- ifelse(all_bird_data$iPlantYear == "Remnant", "Remnant", "Revegetation")
 all_bird_data$daDate <- as.Date(all_bird_data$daDate, "%Y-%m-%d")
 class(all_bird_data$daDate)
@@ -48,6 +79,21 @@ head(all_bird_data2)
 # 4        2015   689      525 Remnant    C00361   Rhipidura albiscapa          Grey Fantail           Remnant   
 # 5        2015   689      525 Remnant    S00465   Smicrornis brevirostris      Weebill                Remnant   
 # 6        2015   689      525 Remnant    U00254   Trichoglossus haematodus     Rainbow Lorikeet       Remnant   
+
+all_bird_data2 <- subset(
+  all_bird_data2,
+  !tSpp %in% water_birds
+)
+
+nrow(all_bird_data2) # 1938
+ 
+length(unique(all_bird_data2$tSpp))  #105
+length(unique(all_bird_data2$WptID)) #49
+
+all_bird_data2 %>% 
+  select(Survey_Year, WptID, iVisitID) %>% 
+  distinct() %>% 
+  count(Survey_Year, "n")
 
 # Richness - alpha diversity ---------------------------------------------------
 richness_data <- all_bird_data %>%
@@ -87,12 +133,17 @@ ggplot(richness_data, aes(x=Treat_type, y=Richness, fill = Treat_type))+
 
 ### stats  ---------------------------------------------------------------------
 library(lme4)
-poisson_model <- glmer(Richness ~ Treat_type + (1|WptID), family = poisson(), data = richness_data)
+poisson_model <- glmer(Richness ~ Treat_type * Survey_Year + (1|WptID), family = poisson(), data = richness_data)
 car::Anova(poisson_model)
 # Analysis of Deviance Table (Type II Wald chisquare tests)
 # Response: Richness
-#             Chisq Df Pr(>Chisq)   
-# Treat_type 8.1269  1   0.004361 **
+#                          Chisq Df Pr(>Chisq)   
+# Treat_type              15.547  1  8.049e-05 ***
+# Survey_Year            255.260  1  < 2.2e-16 ***
+# Treat_type:Survey_Year 791.753  1  < 2.2e-16 ***
+
+poisson_model_1 <- glmer(Richness ~1 + (1|WptID), family = poisson(), data = richness_data)
+anova(poisson_model, poisson_model_1)
 
 # Useful plot
 ggplot(richness_data_average, aes(x=Treat_type, y=mean_Richness, fill = Treat_type))+
@@ -101,13 +152,31 @@ ggplot(richness_data_average, aes(x=Treat_type, y=mean_Richness, fill = Treat_ty
   geom_jitter(width = 0.1, height = 0, alpha = 0.25)+
   theme_test()+
   labs(y= "Bird richness", x = "Treatment", fill = "Treatment")+
-  scale_fill_manual(values = c("Revegetated" = "#D07C2C", "Remnant" = "#2E5E4E"))+
+  scale_fill_manual(values = c("Revegetated" = "darkorange", "Remnant" = "darkgreen"))+
   facet_grid(~Survey_Year)
-# ggsave(filename = "Bird-Richness-SurveyYear_RemRev.pdf", path = outdir, width = 7, height = 6)
+# ggsave(filename = "Bird-Richness-SurveyYear_RemRev-no_water.pdf", path = outdir, width = 7, height = 6)
+
+richness_data_average$RemRev <- ifelse(richness_data_average$Treat_type == "Remnant", "Remnant", "Revegetation")
+richness_data_average$RemRev <- factor(richness_data_average$RemRev, levels = c("Revegetation", "Remnant"))
+ggplot(richness_data_average, aes(x= RemRev, y= mean_Richness, fill = RemRev))+
+  geom_violin(aes(fill = RemRev), alpha = 0.75)+ 
+  geom_boxplot(outlier.shape = NA, width = 0.1, fill = "white")+
+  geom_jitter(height = 0, width = 0.1, alpha = 0.33) + 
+  facet_grid(~Survey_Year, scales = "free_x", space = "free_x")+
+  scale_fill_manual(values = c("Degraded" = "darkgrey", "Revegetation" = "orange", "Remnant" = "darkgreen"))+ 
+  theme_test()+ 
+  theme(axis.text.x = element_text(angle = 45, hjust=1), legend.position = "bottom")+
+  labs(y= "Bird richness", x = "", fill = "Treatment")
+# ggsave(filename = "Bird-richness-report.pdf", path = outdir, width = 5, height = 6)
 
 # Beta - Jaccard ordination differences across sites-visits ---------------------------
-all_bird_data$One_ID_Var <- paste0(all_bird_data$Survey_Year, "_G", all_bird_data$WptID, "_", all_bird_data$iVisitID, "_py", all_bird_data$iPlantYear)
 
+all_bird_data$One_ID_Var <- paste0(all_bird_data$Survey_Year, "_G", all_bird_data$WptID, "_", all_bird_data$iVisitID, "_py", all_bird_data$iPlantYear)
+all_bird_data <- subset(
+  all_bird_data,
+  !tSpp %in% water_birds
+)
+# nrow(all_bird_data) # 1946
 wide_bird_data <- all_bird_data %>%
   select(One_ID_Var, tSpp) %>%
   mutate(present = 1) %>%
@@ -146,6 +215,8 @@ wide_bird_data_site <- wide_bird_data_site %>%
   select(-Site_ID_Var)
 wide_bird_data_site[1:5,1:5]
 
+# saveRDS(object = wide_bird_data_site, file = "wide_bird_data_site.RDS")
+
 # Plot
 set.seed(123)
 NMDS_Jacc <- metaMDS(wide_bird_data, distance = "jaccard", binary = TRUE)
@@ -181,23 +252,30 @@ colnames(bird_metadata_s_Jacc)
 # "Site_ID"      "Survey_Year"  "iWptID"       "iPlantYear"   "iTreatID"     "iEcosystemID"
 # "tEcoName"     "MDS1"         "MDS2"
 head(bird_metadata_s_Jacc)
+bird_metadata_s_Jacc$treat_survey <- paste0(bird_metadata_s_Jacc$Survey_Year, " - ", bird_metadata_s_Jacc$Treat_type)
+unique(bird_metadata_s_Jacc$treat_survey)
 
-ggplot(bird_metadata_s_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =Treat_type))+
-  geom_point(size= 2.5, colour = "black")+
-  geom_point(size= 1.5, colour = "black")+
-  geom_point(size= 2)+
-  geom_path(aes(group=WptID), alpha=0.25, colour = "grey")+
-  scale_colour_manual(values = c("Revegetated" = "#D07C2C", "Remnant" = "#1F5D50"))+
+ggplot(bird_metadata_s_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =treat_survey))+
+  # geom_point(alpha = 0.5, size= 2.5, colour = "black")+
+  # geom_point(alpha = 0.5, size= 1.5, colour = "black")+
+  geom_point(alpha = 0.75, size= 2)+
+  # geom_path(aes(group=WptID), alpha=0.25, colour = "grey")+
+  stat_ellipse(aes(group = treat_survey), size =1.5, linetype = 2) +
+  scale_colour_manual(values = c("2015 - Revegetated" = "#F48C6A",  # warm coral
+                                 "2015 - Remnant"     = "#63B7A0",  # turquoise-green
+                                 "2025 - Revegetated" = "#F4B877",  # soft orange-yellow
+                                 "2025 - Remnant"     = "#4A90C0"   # soft blue
+                                 ))+
   scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
   labs(colour = "Treatment", shape = "Survey year")+
   theme_test()
-# ggsave(filename = "Bird-BETA-NMDS-Jaccard-SurveyYear_RemRev.pdf", path = outdir, width = 7, height = 6)
+# ggsave(filename = "Bird-BETA-NMDS-Jaccard-SurveyYear_RemRev-no_water.pdf", path = outdir, width = 7, height = 6)
 
 ggplot(bird_metadata_s_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour =iPlantYear))+
   geom_point(size= 2)+
   scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
   theme_test()
-# ggsave(filename = "Bird-BETA-NMDS-Jaccard-SurveyYear_PlantYear.pdf", path = outdir, width = 7, height = 6)
+# ggsave(filename = "Bird-BETA-NMDS-Jaccard-SurveyYear_PlantYear-no_water.pdf", path = outdir, width = 7, height = 6)
 
 # stats
 dist_mat_jaccard_bird <- vegdist(wide_bird_data, method = "jaccard")
@@ -215,21 +293,69 @@ all_bird_visit_beta <- all_bird_data %>%
 
 set.seed(123)
 adonis2(dist_mat_jaccard_bird ~ Survey_Year * Treat_type, data = all_bird_visit_beta,
-        strata = all_bird_visit_beta$WptID
+        strata = all_bird_visit_beta$WptID, by = "terms"
         )
 # Permutation test for adonis under reduced model
 # Terms added sequentially (first to last)
 # Blocks:  strata 
 # Permutation: free
 # Number of permutations: 999
-# adonis2(formula = dist_mat_jaccard_bird ~ Survey_Year * Treat_type, data = all_bird_visit_beta, strata = all_bird_visit_beta$WptID)
-#                         Df SumOfSqs      R2       F Pr(>F)    
-# Survey_Year              1    2.559 0.02058  6.3949  0.001 ***
-# Treat_type               1    4.184 0.03365 10.4554  0.001 ***
-# Survey_Year:Treat_type   1    1.543 0.01241  3.8568  0.001 ***
-# Residual               290  116.047 0.93336                   
-# Total                  293  124.334 1.00000  
+# # adonis2(formula = dist_mat_jaccard_bird ~ Survey_Year * Treat_type, data = all_bird_visit_beta, strata = all_bird_visit_beta$WptID)
+#                           Df SumOfSqs      R2       F Pr(>F)    
+#   Survey_Year              1    2.273 0.01865  5.7272  0.001 ***
+#   Treat_type               1    4.252 0.03489 10.7166  0.001 ***
+#   Survey_Year:Treat_type   1    1.455 0.01194  3.6662  0.001 ***
+#   Residual               287  113.881 0.93452                   
+#   Total                  290  121.860 1.00000                                
 ncol(all_bird_visit_beta)
+
+# Interactions are tricky for beta disperson
+all_bird_visit_beta$Year_RemRev_interaction <- interaction(
+  all_bird_visit_beta$Survey_Year,
+  all_bird_visit_beta$Treat_type,
+  drop = TRUE
+)
+
+bd_birds <- betadisper(dist_mat_jaccard_bird, group = all_bird_visit_beta$Year_RemRev_interaction)
+permutest(bd_birds, permutations = 999)
+# Response: Distances
+# Df  Sum Sq  Mean Sq      F N.Perm Pr(>F)    
+# Groups      3 0.10888 0.036293 12.736    999  0.001 ***
+# Residuals 287 0.81786 0.002850   
+
+# distance to centroid
+dist_to_centroid <- bd_birds$distances
+centroid_df <- data.frame(
+  distance = bd_birds$distances,
+  group = bd_birds$group
+)
+
+centroid_df %>%
+  group_by(group) %>%
+  summarise(mean_distance = mean(distance),
+            sd_distance = sd(distance),
+            n = n())
+
+summary(aov(distance ~ group, centroid_df))
+#              Df Sum Sq Mean Sq F value   Pr(>F)    
+# group         3 0.1089 0.03629   12.74 7.74e-08 ***
+# Residuals   287 0.8179 0.00285                     
+TukeyHSD(aov(distance ~ group, centroid_df))
+#                                          diff          lwr         upr     p adj
+# 2025.Remnant-2015.Remnant          0.02603400 -0.001980527  0.05404852 0.0790680
+# 2015.Revegetated-2015.Remnant      0.05181514  0.027552582  0.07607769 0.0000005 *
+# 2025.Revegetated-2015.Remnant      0.01535746 -0.009071317  0.03978623 0.3664170
+# 2015.Revegetated-2025.Remnant      0.02578114  0.001685897  0.04987638 0.0306862 *
+# 2025.Revegetated-2025.Remnant     -0.01067654 -0.034939148  0.01358606 0.6668614
+# 2025.Revegetated-2015.Revegetated -0.03645768 -0.056270099 -0.01664526 0.0000186 *
+multcompView::multcompLetters4(
+  aov(distance ~ group, centroid_df),
+  TukeyHSD(aov(distance ~ group, centroid_df))
+)
+
+plot(aov(distance ~ group, centroid_df))
+boxplot(distance ~ group, centroid_df)
+points(distance ~ group, centroid_df)
 
 # Species level comparisons ----------------------------------------------------
 length(unique(all_bird_data$tSpp)) # 124
@@ -761,8 +887,8 @@ all_bird_data2$Species1 <- all_bird_data2$tSpp
 #    Generalist = species has no primary lifestyle because it spends time in different lifestyle classes
 
 ## Attatch Functions to data ---------------------------------------------------
-bird_functional_full 
-bird_functional <- read.csv(file = /PATH/TO/DATA/data_2025/Bird database stuff/AVONET/ELEData/TraitData/AVONET1_BirdLife.csv")
+
+bird_functional <- read.csv(file = "PATH/TO/Bird database stuff/AVONET/ELEData/TraitData/AVONET1_BirdLife.csv")
 bird_functional_full <- bird_functional
 
 bird_functional <- bird_functional %>% 
@@ -908,7 +1034,6 @@ mean_bird_fun_alphadiversity <- bird_fun_alphadiversity %>%
 mean_bird_fun_alphadiversity$Treat_type <- factor(mean_bird_fun_alphadiversity$Treat_type, levels = c("Revegetated", "Remnant"))
 
 library(ggpubr)
-
 
 plot_fun_richness <- ggplot(mean_bird_fun_alphadiversity, aes(x = Treat_type, y = mean_Richness, fill = Treat_type))+
   geom_violin()+
@@ -1073,7 +1198,6 @@ ggplot(bird_metadata_s_Jacc, aes(x = MDS1, y = MDS2, shape = Survey_Year, colour
 
 
 # Proportion of functional groups for identified species 
-
 ## Tropic Niche ----------------------------------------------------------------
 bird_functional_CLLMM_Fixed_prop <- bird_functional_CLLMM_Fixed %>%
   select(One_ID_Var, Trophic.Niche, Survey_Year, Treat_type) %>%
@@ -1741,7 +1865,7 @@ wide_bird_data_site_save <- wide_bird_data_site_save %>%
 # colnames(bird_functional)
 # read_excel("AVONET1_Birdlife.xlsx")
 
-bird_functional_ABD <- read.csv(file = "/PATH/TO/DATA/data_2025/Bird database stuff/Garnet_2015_Sdata/Australian_Bird_Data_Version_1.csv")
+bird_functional_ABD <- read.csv(file = "PATH/TO/Bird database stuff/Garnet_2015_Sdata/Australian_Bird_Data_Version_1.csv")
 
 # bird_functional_ABD_FOOD <- bird_functional_ABD %>% 
 #   select(matches("X4_"), matches("X5_"), matches("X6_"), matches("X3_"), matches("_Food_"))
@@ -2062,11 +2186,11 @@ bird_alluvial_counts_visit2 <- bird_alluvial_counts_visit %>%
   reframe(meancounts= mean(count),
           prop = mean(count)/sum(count))
   
-bird_alluvial_counts_visit2 %>%
-  group_by(Survey_Year, Treat_type, Order2, Primary.Lifestyle, 
-           Trophic.Niche, Nest_Level, Population_description,)%>%
-  reframe(total = sum(prop)) %>% View()
-  
+# bird_alluvial_counts_visit2 %>%
+#   group_by(Survey_Year, Treat_type, Order2, Primary.Lifestyle, 
+#            Trophic.Niche, Nest_Level, Population_description,)%>%
+#   reframe(total = sum(prop)) %>% View()
+#   
 
 
 group_by(Survey_Year, Treat_type,
@@ -2323,8 +2447,8 @@ ggplot()+
   scale_colour_manual(values = c("Revegetated" =  "#D07C2C", "Remnant" = "#1F5D50"))+
   scale_shape_manual(values =  c("2015" = 21, "2025" = 15))+
   theme_test()+
-  labs(x= "NMDS1", y="NMDS2")
-# ggsave(filename = "presentation-bird-ordination.pdf", path = outdir, width = 7, height = 6)
+  labs(x= "NMDS1", y="NMDS2", colour = "Treatment", shape = "Survey year")
+# ggsave(filename = "presentation-bird-ordination-no_water.pdf", path = outdir, width = 7, height = 6)
 
 TN_NMDS <- ggplot()+
   # Tropic niche vectors
@@ -2462,3 +2586,4 @@ bird_trophic_summary3 <- bird_trophic_summary3 %>%
   select(-c(Genusonly,Speciesonly))
 
 head(bird_trophic_summary3)
+
