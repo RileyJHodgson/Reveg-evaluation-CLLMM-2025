@@ -265,3 +265,64 @@ GLMEM_binomial_permute_anova <- function(data, response, fixed_effects, random_e
     permutation_p_values = p_values
   ))
 }
+
+
+# This function will give the pairwise t test results with multiple corrections
+# it is intedned for use after permuted ANOVAs (aov()) with a single explanatory variable that requires multiple corrections
+library(multcompView)
+
+# Make sure levels of the group/treatment factor are as desired
+pairwise_perm_cld <- function(df, response, treatment, nreps = 9999, p_adjust = "BH") {
+  # Ensure response is numeric and treatment is factor
+  df[[response]] <- as.numeric(as.character(df[[response]]))
+  df[[treatment]] <- as.factor(df[[treatment]])
+  
+  trts <- levels(df[[treatment]])
+  
+  # All pairwise combinations
+  pairs <- combn(trts, 2, simplify = FALSE)
+  
+  # Permutation t-test function
+  perm_t_test <- function(y, group, nreps_inner) {
+    obs <- t.test(y ~ group)$statistic
+    r <- replicate(nreps_inner, {
+      new_y <- sample(y)
+      t.test(new_y ~ group)$statistic
+    })
+    pv <- sum(abs(r) >= abs(obs))/nreps_inner
+    data.frame(t_stat = obs, pvalue = pv)
+  }
+  
+  # Run all pairwise permutation tests
+  pvals <- sapply(pairs, function(pair) {
+    sub <- df[df[[treatment]] %in% pair, ]
+    perm_t_test(sub[[response]], sub[[treatment]], nreps_inner = nreps)
+  })
+  
+  # Format results
+  pvals <- t(pvals)
+  pvals <- as.data.frame(pvals)
+  pvals$comparison <- sapply(pairs, paste, collapse = " vs ")
+  pvals$pvalue_adj <- p.adjust(pvals$pvalue, method = p_adjust)
+  pvals <- pvals[, c("comparison", "t_stat", "pvalue", "pvalue_adj")]
+  pvals$significance <- ifelse(pvals$pvalue_adj < 0.05, "*", 
+                               ifelse(pvals$pvalue_adj < 0.01, "**", 
+                                      ifelse(pvals$pvalue_adj < 0.001, "***", "ns")))
+  
+  # Build significance matrix
+  sig_mat <- matrix(TRUE, nrow = length(trts), ncol = length(trts), dimnames = list(trts, trts))
+  for(i in seq_along(pairs)){
+    t1 <- pairs[[i]][1]
+    t2 <- pairs[[i]][2]
+    sig_mat[t1, t2] <- sig_mat[t2, t1] <- pvals$pvalue_adj[i] < 0.05
+  }
+  
+  # Generate compact letter display
+  cld <- multcompLetters(sig_mat, threshold = 0.05)
+  
+  # Return results
+  list(
+    pairwise_comparisons = pvals,
+    group_differences = cld$Letters
+  )
+}
