@@ -305,9 +305,9 @@ pairwise_perm_cld <- function(df, response, treatment, nreps = 9999, p_adjust = 
   pvals$comparison <- sapply(pairs, paste, collapse = " vs ")
   pvals$pvalue_adj <- p.adjust(pvals$pvalue, method = p_adjust)
   pvals <- pvals[, c("comparison", "t_stat", "pvalue", "pvalue_adj")]
-  pvals$significance <- ifelse(pvals$pvalue_adj < 0.05, "*", 
+  pvals$significance <- ifelse(pvals$pvalue_adj < 0.001, "***", 
                                ifelse(pvals$pvalue_adj < 0.01, "**", 
-                                      ifelse(pvals$pvalue_adj < 0.001, "***", "ns")))
+                                      ifelse(pvals$pvalue_adj < 0.05, "*", "ns")))
   
   # Build significance matrix
   sig_mat <- matrix(TRUE, nrow = length(trts), ncol = length(trts), dimnames = list(trts, trts))
