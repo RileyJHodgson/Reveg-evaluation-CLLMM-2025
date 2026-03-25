@@ -57,6 +57,14 @@ def main() -> int:
     
     out_dir = main_dir
     
+    # After input_dir and out_dir are resolved
+    output_file = os.path.join(out_dir, "functions_counts.csv")
+    
+    if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+        print(f"{output_file} already exists — skipping processing.")
+        return 0
+    
+
     pattern = "**/func/*_all_levels_and_function.xls" if args.recursive else "*_all_levels_and_function.xls"
     files = sorted(glob.glob(os.path.join(input_dir, pattern), recursive=args.recursive))
     

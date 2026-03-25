@@ -27,7 +27,7 @@ spf_file="$singlem_dir/${sample}.singlem.r1_spf.tsv"
 sf_file="$sf_dir/norm_${sample}_all_levels_and_function.xls"
 out_file="$sf_dir/norm_${sample}_all_levels_and_function-cpm_prok.xls"
 
-python steps-array/normalise_sf_cpm_prok.py \
+python steps-pawsey/normalise_sf_cpm_prok.py \
   --qc-json "$qc_json" \
   --spf-file "$spf_file" \
   --sf-file "$sf_file" \

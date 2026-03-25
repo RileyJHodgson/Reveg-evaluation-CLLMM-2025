@@ -10,7 +10,7 @@ set -euo pipefail
 
 set +u
 source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate /scratch/pawsey1018/rhodgson/envs/hostremoval
+conda activate hostremoval
 set -u
 
 # storage directories. As a lot of file paths are relative to where script submitted, we need to make sure the paths are carefully specified
@@ -36,6 +36,15 @@ qc_dir="${out_root}/${sample}/qc"
 mkdir -p "$qc_dir"
 qc_dir="$(realpath "$qc_dir")"
 
+# End script if file already exists
+OUT1="${qc_dir}/${sample}_R1.good.fastq.gz"
+OUT2="${qc_dir}/${sample}_R2.good.fastq.gz"
+
+if [[ -s "$OUT1" && -s "$OUT2" ]]; then
+    echo "QC already completed for $sample — skipping."
+    exit 0
+fi
+
 # prep temporary directory
 base_tmp="${SLURM_TMPDIR:-/scratch/pawsey1018/rhodgson/tmp}"
 bucket=$((SLURM_JOB_ID % 100))
@@ -45,8 +54,8 @@ trap 'rm -rf "$tmpdir"; echo "Cleaned tmpdir: $tmpdir"' EXIT
 cd "$tmpdir"
 
 # Transfer files
-cp "${raw_reads_dir}/${sample}_R1.fastq.gz" "$tmpdir/"
-cp "${raw_reads_dir}/${sample}_R2.fastq.gz" "$tmpdir/"
+cp -n "${raw_reads_dir}/${sample}_R1.fastq.gz" "$tmpdir/"
+cp -n "${raw_reads_dir}/${sample}_R2.fastq.gz" "$tmpdir/"
 
 # fastp
 fastp --length_required 60 \
@@ -68,7 +77,8 @@ fastp --length_required 60 \
     --in1 ${sample}_R1.fastq.gz \
     --in2 ${sample}_R2.fastq.gz \
     --html ${sample}_fastp.html \
-    --json ${sample}_fastp.json
+    --json ${sample}_fastp.json \
+    --thread "${SLURM_CPUS_PER_TASK:-1}"
 
 # Copy results back to storage
 cp "${sample}_R1.good.fastq.gz" "$qc_dir/"
